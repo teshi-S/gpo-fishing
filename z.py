@@ -197,12 +197,56 @@ class HotkeyGUI:
             print(f'Error clicking at {coords}: {e}')
 
     def perform_auto_purchase_sequence(self):
-        """Perform the auto-purchase sequence using saved points and amount.\n\nSequence (per user spec):\n- press \'e\', wait\n- click point1, wait\n- click point2, wait\n- type amount, wait\n- click point1, wait\n- click point3, wait\n- click point2, wait\n"""  # inserted
+        """Perform the auto-purchase sequence using saved points and amount.
+
+Sequence (per user spec):
+- press 'e', wait
+- click point1, wait
+- click point2, wait
+- type amount, wait
+- click point3, wait
+- click point4, wait
+"""
         print('=== AUTO-PURCHASE SEQUENCE START ===')
         pts = self.point_coords
-        if not pts or not pts.get(1) or (not pts.get(2)) or (not pts.get(3)) or (not pts.get(4)):
+        if not pts or not pts.get(1) or not pts.get(2) or not pts.get(3) or not pts.get(4):
             print('Auto purchase aborted: points not fully set (need points 1-4).')
-        return None
+            return
+        
+        amount = str(self.auto_purchase_amount)
+        
+        # Press 'e' key
+        print('Pressing E key...')
+        keyboard.press_and_release('e')
+        threading.Event().wait(self.purchase_delay_after_key)
+        
+        # Click point 1
+        print(f'Clicking Point 1: {pts[1]}')
+        self._click_at(pts[1])
+        threading.Event().wait(self.purchase_click_delay)
+        
+        # Click point 2
+        print(f'Clicking Point 2: {pts[2]}')
+        self._click_at(pts[2])
+        threading.Event().wait(self.purchase_click_delay)
+        
+        # Type amount
+        print(f'Typing amount: {amount}')
+        keyboard.write(amount)
+        threading.Event().wait(self.purchase_after_type_delay)
+        
+        # Click point 3
+        print(f'Clicking Point 3: {pts[3]}')
+        self._click_at(pts[3])
+        threading.Event().wait(self.purchase_click_delay)
+        
+        # Click point 4
+        print(f'Clicking Point 4: {pts[4]}')
+        self._click_at(pts[4])
+        threading.Event().wait(self.purchase_click_delay)
+        
+        print('=== AUTO-PURCHASE SEQUENCE COMPLETE ===')
+        print()
 
     def start_rebind(self, action):
         """Start recording a new hotkey"""  # inserted
