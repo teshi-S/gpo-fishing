@@ -30,7 +30,7 @@ echo [3/3] Installation complete!
 echo.
 echo To run GPO Autofish:
 echo - Double-click "run.bat" 
-echo - Or run "python z.py" as administrator
+echo - Or run "python z.py" 
 echo.
 echo ========================================
 echo   Installation Successful!

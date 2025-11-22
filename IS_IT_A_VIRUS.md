@@ -40,8 +40,6 @@ Some antivirus software may flag automation tools because they:
 
 ### Running as Administrator
 
-The tool requires administrator privileges **only** for global hotkey functionality (F1/F2/F3 keys). Without admin rights, the keyboard library cannot register system-wide hotkeys.
-
----
+## Most Macros ask for the privilage to run as administrator, This macro does not do such.
 
 **When in doubt, always verify the code yourself or ask someone you trust to review it.**

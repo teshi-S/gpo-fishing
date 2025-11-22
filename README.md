@@ -63,7 +63,7 @@ The original closed-source macro is sketchy and often flagged by antivirus softw
    - Set everything up for you
 3. **Run the application:**
    - **With console:** Double-click `run.bat`
-   - **Silent mode:** Double-click `run_silent.bat` (no console window)
+   - **Silent mode:** Double-click `run_silent.bat` (completely hidden)
 
 ### 🔧 Manual Installation
 
@@ -77,7 +77,10 @@ The original closed-source macro is sketchy and often flagged by antivirus softw
    ```bash
    pip install -r requirements.txt
    ```
-4. **Run as administrator**
+4. **Run the application**
+   ```bash
+   python z.py
+   ```
    ```bash
    python z.py
    ```
@@ -102,6 +105,7 @@ The original closed-source macro is sketchy and often flagged by antivirus softw
 - **F1**: Start/Stop fishing
 - **F2**: Toggle auto-purchase
 - **F3**: Emergency stop
+- **Note**: Hotkeys work without admin privileges
 
 ### Performance Tips
 
@@ -121,7 +125,7 @@ The original closed-source macro is sketchy and often flagged by antivirus softw
 
 ### Runtime Issues
 
-- **Hotkeys not working**: Make sure you ran as administrator
+- **Hotkeys not working**: Try running the macro with administrator
 - **Detection not working**: Adjust overlay position and detection settings
 - **High CPU usage**: Use silent mode (`run_silent.bat`) and disable verbose logging
 
