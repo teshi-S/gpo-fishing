@@ -153,7 +153,7 @@ class HotkeyGUI:
         self.last_update_check = 0
         self.update_check_interval = 300  # Check every 5min
         self.pending_update = None  # Store update info when main loop is active
-        self.current_version = "1.4.2"  # Current version
+        self.current_version = "1.4.4"  # Current version
         self.repo_url = "https://api.github.com/repos/arielldev/gpo-fishing/commits/main"
         
         # Performance settings
@@ -372,6 +372,9 @@ class HotkeyGUI:
         current_row += 1
         
         self.create_timing_section(current_row)
+        current_row += 1
+        
+        self.create_presets_section(current_row)
         current_row += 1
         
         self.create_hotkeys_section(current_row)
@@ -1007,206 +1010,230 @@ Sequence (per user spec):
                 self.set_recovery_state("purchasing", {"sequence": "auto_purchase", "loops_per_purchase": getattr(self, 'loops_per_purchase', 1)})
                 self.perform_auto_purchase_sequence()
             
-            # Casting with state tracking
-            self.set_recovery_state("casting", {"action": "initial_cast"})
-            self.cast_line()
-            cast_time = time.time()
-            
-            # Fishing detection with state tracking
-            self.set_recovery_state("fishing", {"action": "blue_bar_detection", "scan_timeout": self.scan_timeout})
-            detected = False
-            last_detection_time = time.time()
-            was_detecting = False
-            print('Entering main detection loop with smart monitoring...')
-            
+            # Main fishing loop with improved state management
             while self.main_loop_active:
-                # Check if recovery is needed
-                if self.check_recovery_needed():
-                    self.perform_recovery()
-                    break
+                try:
+                    # Casting with state tracking
+                    self.set_recovery_state("casting", {"action": "initial_cast"})
+                    self.cast_line()
+                    cast_time = time.time()
                     
-                x = self.overlay_area['x']
-                y = self.overlay_area['y']
-                width = self.overlay_area['width']
-                height = self.overlay_area['height']
-                monitor = {'left': x, 'top': y, 'width': width, 'height': height}
-                screenshot = sct.grab(monitor)
-                img = np.array(screenshot)
-                point1_x = None
-                point1_y = None
-                found_first = False
-                for row_idx in range(height):
-                    for col_idx in range(width):
-                        b, g, r = img[row_idx, col_idx, 0:3]
-                        if r == target_color[0] and g == target_color[1] and b == target_color[2]:
-                            point1_x = x + col_idx
-                            point1_y = y + row_idx
-                            found_first = True
-                            break
-                    if found_first:
-                        break
-                current_time = time.time()
-                
-                if found_first:
-                    detected = True
-                    last_detection_time = current_time
-                else:
-                    # No blue bar found - check if we should timeout (enhanced with smart tracking)
-                    if not detected and current_time - cast_time > self.scan_timeout:
-                        print(f'Cast timeout after {self.scan_timeout}s, recasting...')
-                        self.set_recovery_state("casting", {"action": "recast_after_timeout", "timeout_duration": self.scan_timeout})
-                        self.cast_line()
-                        cast_time = time.time()
-                        detected = False
-                        self.set_recovery_state("fishing", {"action": "blue_bar_detection_retry"})
-                        threading.Event().wait(0.1)
-                        continue
-                    
-                    # If we were previously detecting but now lost it
-                    if was_detecting:
-                        print('Lost detection, waiting...')
-                        threading.Event().wait(self.wait_after_loss)
-                        was_detecting = False
-                        self.check_and_purchase()
-                        self.cast_line()
-                        detected = False
-                        cast_time = time.time()
-                        last_detection_time = time.time()
-                    
-                    threading.Event().wait(0.1)
-                    continue
-                point2_x = None
-                row_idx = point1_y - y
-                for col_idx in range(width - 1, -1, -1):
-                    b, g, r = img[row_idx, col_idx, 0:3]
-                    if r == target_color[0] and g == target_color[1] and b == target_color[2]:
-                        point2_x = x + col_idx
-                        break
-                if point2_x is None:
-                    threading.Event().wait(0.1)
-                    continue
-                temp_area_x = point1_x
-                temp_area_width = point2_x - point1_x + 1
-                temp_monitor = {'left': temp_area_x, 'top': y, 'width': temp_area_width, 'height': height}
-                temp_screenshot = sct.grab(temp_monitor)
-                temp_img = np.array(temp_screenshot)
-                dark_color = (25, 25, 25)
-                top_y = None
-                for row_idx in range(height):
-                    found_dark = False
-                    for col_idx in range(temp_area_width):
-                        b, g, r = temp_img[row_idx, col_idx, 0:3]
-                        if r == dark_color[0] and g == dark_color[1] and b == dark_color[2]:
-                            top_y = y + row_idx
-                            found_dark = True
-                            break
-                    if found_dark:
-                        break
-                bottom_y = None
-                for row_idx in range(height - 1, -1, -1):
-                    found_dark = False
-                    for col_idx in range(temp_area_width):
-                        b, g, r = temp_img[row_idx, col_idx, 0:3]
-                        if r == dark_color[0] and g == dark_color[1] and b == dark_color[2]:
-                            bottom_y = y + row_idx
-                            found_dark = True
-                            break
-                    if found_dark:
-                        break
-                if top_y is None or bottom_y is None:
-                    threading.Event().wait(0.1)
-                    continue
-                self.real_area = {'x': temp_area_x, 'y': top_y, 'width': temp_area_width, 'height': bottom_y - top_y + 1}
-                real_x = self.real_area['x']
-                real_y = self.real_area['y']
-                real_width = self.real_area['width']
-                real_height = self.real_area['height']
-                real_monitor = {'left': real_x, 'top': real_y, 'width': real_width, 'height': real_height}
-                real_screenshot = sct.grab(real_monitor)
-                real_img = np.array(real_screenshot)
-                white_color = (255, 255, 255)
-                white_top_y = None
-                white_bottom_y = None
-                for row_idx in range(real_height):
-                    for col_idx in range(real_width):
-                        b, g, r = real_img[row_idx, col_idx, 0:3]
-                        if r == white_color[0] and g == white_color[1] and b == white_color[2]:
-                            white_top_y = real_y + row_idx
-                            break
-                    if white_top_y is not None:
-                        break
-                for row_idx in range(real_height - 1, -1, -1):
-                    for col_idx in range(real_width):
-                        b, g, r = real_img[row_idx, col_idx, 0:3]
-                        if r == white_color[0] and g == white_color[1] and b == white_color[2]:
-                            white_bottom_y = real_y + row_idx
-                            break
-                    if white_bottom_y is not None:
-                        break
-                if white_top_y is not None and white_bottom_y is not None:
-                    white_height = white_bottom_y - white_top_y + 1
-                    max_gap = white_height * 2
-                dark_sections = []
-                current_section_start = None
-                gap_counter = 0
-                for row_idx in range(real_height):
-                    has_dark = False
-                    for col_idx in range(real_width):
-                        b, g, r = real_img[row_idx, col_idx, 0:3]
-                        if r == dark_color[0] and g == dark_color[1] and b == dark_color[2]:
-                            has_dark = True
-                            break
-                    if has_dark:
-                        gap_counter = 0
-                        if current_section_start is None:
-                            current_section_start = real_y + row_idx
-                    else:
-                        if current_section_start is not None:
-                            gap_counter += 1
-                            if gap_counter > max_gap:
-                                section_end = real_y + row_idx - gap_counter
-                                dark_sections.append({'start': current_section_start, 'end': section_end, 'middle': (current_section_start + section_end) // 2})
-                                current_section_start = None
-                                gap_counter = 0
-                if current_section_start is not None:
-                    section_end = real_y + real_height - 1 - gap_counter
-                    dark_sections.append({'start': current_section_start, 'end': section_end, 'middle': (current_section_start + section_end) // 2})
-                if dark_sections and white_top_y is not None:
-                    # If this is the first time detecting this fish, increment counter
-                    if not was_detecting:
-                        self.increment_fish_counter()
-                        self.set_recovery_state("idle")  # Reset to idle after successful catch
-                    was_detecting = True
+                    # Fishing detection with state tracking
+                    self.set_recovery_state("fishing", {"action": "blue_bar_detection", "scan_timeout": self.scan_timeout})
+                    detected = False
                     last_detection_time = time.time()
-                    for section in dark_sections:
-                        section['size'] = section['end'] - section['start'] + 1
-                    largest_section = max(dark_sections, key=lambda s: s['size'])
-                    print(f'y:{white_top_y}')
-                    print(f"y:{largest_section['middle']}")
-                    raw_error = largest_section['middle'] - white_top_y
-                    normalized_error = raw_error / real_height if real_height > 0 else raw_error
-                    derivative = normalized_error - self.previous_error
-                    self.previous_error = normalized_error
-                    pd_output = self.kp * normalized_error + self.kd * derivative
-                    print(f'Error: {raw_error}px ({normalized_error:.3f} normalized), PD Output: {pd_output:.2f}')
+                    was_detecting = False
+                    print('Entering main detection loop with smart monitoring...')
                     
-                    # Decide whether to hold or release based on PD output
-                    # Positive error/output = middle is below, need to go up = hold click
-                    # Negative error/output = middle is above, need to go down = release click
-                    if pd_output > 0:
-                        # Need to accelerate up - hold left click
-                        if not self.is_clicking:
-                            win32api.mouse_event(win32con.MOUSEEVENTF_LEFTDOWN, 0, 0, 0, 0)
-                            self.is_clicking = True
-                    else:
-                        # Need to accelerate down - release left click
-                        if self.is_clicking:
-                            win32api.mouse_event(win32con.MOUSEEVENTF_LEFTUP, 0, 0, 0, 0)
-                            self.is_clicking = False
+                    # Blue bar detection loop with timeout protection
+                    detection_start_time = time.time()
+                    while self.main_loop_active:
+                        # Check if recovery is needed
+                        if self.check_recovery_needed():
+                            self.perform_recovery()
+                            return
+                        
+                        # Force timeout if detection takes too long (prevents infinite loops)
+                        current_time = time.time()
+                        if current_time - detection_start_time > self.scan_timeout + 10:  # Extra 10s buffer
+                            print(f'🚨 FORCE TIMEOUT: Detection loop exceeded {self.scan_timeout + 10}s, breaking...')
+                            self.set_recovery_state("idle", {"action": "force_timeout_break"})
+                            break
+                        
+                        x = self.overlay_area['x']
+                        y = self.overlay_area['y']
+                        width = self.overlay_area['width']
+                        height = self.overlay_area['height']
+                        monitor = {'left': x, 'top': y, 'width': width, 'height': height}
+                        screenshot = sct.grab(monitor)
+                        img = np.array(screenshot)
+                        point1_x = None
+                        point1_y = None
+                        found_first = False
+                        for row_idx in range(height):
+                            for col_idx in range(width):
+                                b, g, r = img[row_idx, col_idx, 0:3]
+                                if r == target_color[0] and g == target_color[1] and b == target_color[2]:
+                                    point1_x = x + col_idx
+                                    point1_y = y + row_idx
+                                    found_first = True
+                                    break
+                            if found_first:
+                                break
+                        current_time = time.time()
+                        
+                        if found_first:
+                            detected = True
+                            last_detection_time = current_time
+                        else:
+                            # No blue bar found - check if we should timeout (enhanced with smart tracking)
+                            if not detected and current_time - cast_time > self.scan_timeout:
+                                print(f'Cast timeout after {self.scan_timeout}s, recasting...')
+                                self.set_recovery_state("casting", {"action": "recast_after_timeout", "timeout_duration": self.scan_timeout})
+                                break  # Break out of detection loop to recast
+                            
+                            # If we were previously detecting but now lost it
+                            if was_detecting:
+                                print('Lost detection, waiting...')
+                                threading.Event().wait(self.wait_after_loss)
+                                was_detecting = False
+                                self.check_and_purchase()
+                                self.set_recovery_state("idle", {"action": "fish_caught_processing"})
+                                break  # Break out of detection loop to start new cycle
+                            
+                            threading.Event().wait(0.1)
+                            continue
+                        point2_x = None
+                        row_idx = point1_y - y
+                        for col_idx in range(width - 1, -1, -1):
+                            b, g, r = img[row_idx, col_idx, 0:3]
+                            if r == target_color[0] and g == target_color[1] and b == target_color[2]:
+                                point2_x = x + col_idx
+                                break
+                        if point2_x is None:
+                            threading.Event().wait(0.1)
+                            continue
+                        temp_area_x = point1_x
+                        temp_area_width = point2_x - point1_x + 1
+                        temp_monitor = {'left': temp_area_x, 'top': y, 'width': temp_area_width, 'height': height}
+                        temp_screenshot = sct.grab(temp_monitor)
+                        temp_img = np.array(temp_screenshot)
+                        dark_color = (25, 25, 25)
+                        top_y = None
+                        for row_idx in range(height):
+                            found_dark = False
+                            for col_idx in range(temp_area_width):
+                                b, g, r = temp_img[row_idx, col_idx, 0:3]
+                                if r == dark_color[0] and g == dark_color[1] and b == dark_color[2]:
+                                    top_y = y + row_idx
+                                    found_dark = True
+                                    break
+                            if found_dark:
+                                break
+                        bottom_y = None
+                        for row_idx in range(height - 1, -1, -1):
+                            found_dark = False
+                            for col_idx in range(temp_area_width):
+                                b, g, r = temp_img[row_idx, col_idx, 0:3]
+                                if r == dark_color[0] and g == dark_color[1] and b == dark_color[2]:
+                                    bottom_y = y + row_idx
+                                    found_dark = True
+                                    break
+                            if found_dark:
+                                break
+                        if top_y is None or bottom_y is None:
+                            threading.Event().wait(0.1)
+                            continue
+                        self.real_area = {'x': temp_area_x, 'y': top_y, 'width': temp_area_width, 'height': bottom_y - top_y + 1}
+                        real_x = self.real_area['x']
+                        real_y = self.real_area['y']
+                        real_width = self.real_area['width']
+                        real_height = self.real_area['height']
+                        real_monitor = {'left': real_x, 'top': real_y, 'width': real_width, 'height': real_height}
+                        real_screenshot = sct.grab(real_monitor)
+                        real_img = np.array(real_screenshot)
+                        white_color = (255, 255, 255)
+                        white_top_y = None
+                        white_bottom_y = None
+                        for row_idx in range(real_height):
+                            for col_idx in range(real_width):
+                                b, g, r = real_img[row_idx, col_idx, 0:3]
+                                if r == white_color[0] and g == white_color[1] and b == white_color[2]:
+                                    white_top_y = real_y + row_idx
+                                    break
+                            if white_top_y is not None:
+                                break
+                        for row_idx in range(real_height - 1, -1, -1):
+                            for col_idx in range(real_width):
+                                b, g, r = real_img[row_idx, col_idx, 0:3]
+                                if r == white_color[0] and g == white_color[1] and b == white_color[2]:
+                                    white_bottom_y = real_y + row_idx
+                                    break
+                            if white_bottom_y is not None:
+                                break
+                        if white_top_y is not None and white_bottom_y is not None:
+                            white_height = white_bottom_y - white_top_y + 1
+                            max_gap = white_height * 2
+                        dark_sections = []
+                        current_section_start = None
+                        gap_counter = 0
+                        for row_idx in range(real_height):
+                            has_dark = False
+                            for col_idx in range(real_width):
+                                b, g, r = real_img[row_idx, col_idx, 0:3]
+                                if r == dark_color[0] and g == dark_color[1] and b == dark_color[2]:
+                                    has_dark = True
+                                    break
+                            if has_dark:
+                                gap_counter = 0
+                                if current_section_start is None:
+                                    current_section_start = real_y + row_idx
+                            else:
+                                if current_section_start is not None:
+                                    gap_counter += 1
+                                    if gap_counter > max_gap:
+                                        section_end = real_y + row_idx - gap_counter
+                                        dark_sections.append({'start': current_section_start, 'end': section_end, 'middle': (current_section_start + section_end) // 2})
+                                        current_section_start = None
+                                        gap_counter = 0
+                        if current_section_start is not None:
+                            section_end = real_y + real_height - 1 - gap_counter
+                            dark_sections.append({'start': current_section_start, 'end': section_end, 'middle': (current_section_start + section_end) // 2})
+                        if dark_sections and white_top_y is not None:
+                            # If this is the first time detecting this fish, increment counter
+                            if not was_detecting:
+                                self.increment_fish_counter()
+                                self.set_recovery_state("idle")  # Reset to idle after successful catch
+                            was_detecting = True
+                            last_detection_time = time.time()
+                            for section in dark_sections:
+                                section['size'] = section['end'] - section['start'] + 1
+                            largest_section = max(dark_sections, key=lambda s: s['size'])
+                            print(f'y:{white_top_y}')
+                            print(f"y:{largest_section['middle']}")
+                            raw_error = largest_section['middle'] - white_top_y
+                            normalized_error = raw_error / real_height if real_height > 0 else raw_error
+                            derivative = normalized_error - self.previous_error
+                            self.previous_error = normalized_error
+                            pd_output = self.kp * normalized_error + self.kd * derivative
+                            print(f'Error: {raw_error}px ({normalized_error:.3f} normalized), PD Output: {pd_output:.2f}')
+                            
+                            # Decide whether to hold or release based on PD output
+                            # Positive error/output = middle is below, need to go up = hold click
+                            # Negative error/output = middle is above, need to go down = release click
+                            if pd_output > 0:
+                                # Need to accelerate up - hold left click
+                                if not self.is_clicking:
+                                    win32api.mouse_event(win32con.MOUSEEVENTF_LEFTDOWN, 0, 0, 0, 0)
+                                    self.is_clicking = True
+                            else:
+                                # Need to accelerate down - release left click
+                                if self.is_clicking:
+                                    win32api.mouse_event(win32con.MOUSEEVENTF_LEFTUP, 0, 0, 0, 0)
+                                    self.is_clicking = False
+                            
+                            print()
+                        threading.Event().wait(0.1)
                     
-                    print()
-                threading.Event().wait(0.1)
+                    # End of detection loop - set idle state before next iteration
+                    self.set_recovery_state("idle", {"action": "detection_loop_complete"})
+                    
+                except Exception as e:
+                    print(f'🚨 Main loop error: {e}')
+                    self.log(f'Main loop error: {e}', "error")
+                    # Set recovery state and continue to next iteration
+                    self.set_recovery_state("idle", {"action": "error_recovery", "error": str(e)})
+                    threading.Event().wait(1.0)  # Brief pause before retry
+                    
         print('Main loop stopped')
+        
+        # Ensure mouse is released when loop stops
+        if self.is_clicking:
+            try:
+                win32api.mouse_event(win32con.MOUSEEVENTF_LEFTUP, 0, 0, 0, 0)
+                self.is_clicking = False
+            except:
+                pass
     
     def check_recovery_needed(self):
         """smart recovery - detects specific stuck actions with detailed logging"""
@@ -1215,8 +1242,8 @@ Sequence (per user spec):
             
         current_time = time.time()
         
-        # Only check every 15 seconds for efficiency
-        if current_time - self.last_smart_check < self.smart_check_interval:
+        # Check more frequently for faster recovery (every 10 seconds instead of 15)
+        if current_time - self.last_smart_check < 10.0:
             return False
             
         self.last_smart_check = current_time
@@ -1224,6 +1251,10 @@ Sequence (per user spec):
         # Check if current state has been running too long
         state_duration = current_time - self.state_start_time
         max_duration = self.max_state_duration.get(self.current_state, 60.0)
+        
+        # More aggressive timeout for idle state (common stuck state)
+        if self.current_state == "idle" and state_duration > 30.0:  # Reduced from 45s to 30s
+            max_duration = 30.0
         
         if state_duration > max_duration:
             # Create detailed stuck action report
@@ -1248,6 +1279,8 @@ Sequence (per user spec):
                 self.log(f'⚠️ Typing stuck for {state_duration:.0f}s - input field or keyboard issue', "error")
             elif self.current_state == "clicking":
                 self.log(f'⚠️ Click action stuck for {state_duration:.0f}s - UI element or mouse issue', "error")
+            elif self.current_state == "idle":
+                self.log(f'� IDLE SSTUCK: System idle for {state_duration:.0f}s - main loop may be frozen', "error")
             else:
                 self.log(f'⚠️ State "{self.current_state}" stuck for {state_duration:.0f}s (max: {max_duration}s)', "error")
             
@@ -1257,9 +1290,9 @@ Sequence (per user spec):
             
             return True
             
-        # Quick check for completely frozen state (no activity for 2 minutes)
+        # More aggressive check for completely frozen state (reduced from 2 minutes to 90 seconds)
         time_since_activity = current_time - self.last_activity_time
-        if time_since_activity > 120:  # 2 minutes instead of 5
+        if time_since_activity > 90:  # 90 seconds instead of 120
             self.log(f'⚠️ Complete freeze detected - no activity for {time_since_activity:.0f}s', "error")
             return True
             
@@ -1284,8 +1317,8 @@ Sequence (per user spec):
             
         current_time = time.time()
         
-        # Prevent spam recovery (wait at least 15 seconds between recoveries)
-        if current_time - self.last_recovery_time < 15:
+        # Prevent spam recovery (reduced from 15 to 10 seconds for faster response)
+        if current_time - self.last_recovery_time < 10:
             return
             
         self.recovery_count += 1
@@ -1310,29 +1343,40 @@ Sequence (per user spec):
         # Send webhook notification about recovery
         self.send_recovery_webhook(recovery_info)
         
+        # Force release mouse if stuck clicking
+        if self.is_clicking:
+            try:
+                win32api.mouse_event(win32con.MOUSEEVENTF_LEFTUP, 0, 0, 0, 0)
+                self.is_clicking = False
+                self.log('🔧 Released stuck mouse click', "verbose")
+            except Exception as e:
+                self.log(f'⚠️ Error releasing mouse: {e}', "error")
+        
         # Reset all timers and state
         self.last_activity_time = current_time
         self.last_fish_time = current_time
-        self.set_recovery_state("idle")
+        self.set_recovery_state("idle", {"action": "recovery_reset"})
         self.stuck_actions.clear()  # Clear stuck actions after recovery
         
         # Stop current loop
         self.main_loop_active = False
         
         # Wait a moment for cleanup
-        threading.Event().wait(1.0)
+        threading.Event().wait(2.0)  # Increased wait time for better cleanup
         
-        # Restart the loop
-        if hasattr(self, 'main_loop_thread') and self.main_loop_thread and self.main_loop_thread.is_alive():
-            self.main_loop_thread.join(timeout=3.0)
+        # Restart the loop with better error handling
+        try:
+            if hasattr(self, 'main_loop_thread') and self.main_loop_thread and self.main_loop_thread.is_alive():
+                self.main_loop_thread.join(timeout=5.0)  # Increased timeout
+        except Exception as e:
+            self.log(f'⚠️ Error joining thread: {e}', "error")
         
+        # Restart with fresh state
         self.main_loop_active = True
         self.main_loop_thread = threading.Thread(target=self.main_loop, daemon=True)
         self.main_loop_thread.start()
         
         self.log('✅ Smart Recovery complete - Enhanced monitoring active', "important")
-        
-        self.log('✅ Auto-recovery complete - Macro restarted', "important")
     
     def update_runtime_timer(self):
         """Update the runtime display"""
@@ -1689,6 +1733,30 @@ Sequence (per user spec):
         ToolTip(help_btn, "Pause time after losing a fish before recasting (seconds)")
         self.wait_var.trace_add('write', lambda *args: setattr(self, 'wait_after_loss', self.wait_var.get()))
 
+    def create_presets_section(self, start_row):
+        """Create the presets save/load section"""
+        section = CollapsibleFrame(self.main_frame, "💾 Presets", start_row)
+        frame = section.get_content_frame()
+        frame.columnconfigure(1, weight=1)  # Center column expands
+        
+        row = 0
+        
+        # Save preset button (centered layout like point buttons)
+        ttk.Label(frame, text='Save:').grid(row=row, column=0, sticky='e', pady=5, padx=(0, 10))
+        save_btn = ttk.Button(frame, text='💾 Save Preset', command=self.save_preset)
+        save_btn.grid(row=row, column=1, pady=5, sticky='w')
+        help_btn = ttk.Button(frame, text='?', width=3)
+        help_btn.grid(row=row, column=2, padx=(10, 0), pady=5)
+        ToolTip(help_btn, "Save current settings (excluding webhooks and keybinds) to a preset file")
+        row += 1
+        
+        # Load preset button (centered layout like point buttons)
+        ttk.Label(frame, text='Load:').grid(row=row, column=0, sticky='e', pady=5, padx=(0, 10))
+        load_btn = ttk.Button(frame, text='📁 Load Preset', command=self.load_preset)
+        load_btn.grid(row=row, column=1, pady=5, sticky='w')
+        help_btn2 = ttk.Button(frame, text='?', width=3)
+        help_btn2.grid(row=row, column=2, padx=(10, 0), pady=5)
+        ToolTip(help_btn2, "Load settings from a preset file")
 
     def create_hotkeys_section(self, start_row):
         """Create the hotkey bindings collapsible section"""
@@ -2488,6 +2556,158 @@ Sequence (per user spec):
                 json.dump(preset_data, f, indent=2)
         except Exception as e:
             print(f'Error auto-saving settings: {e}')
+
+    def save_preset(self):
+        """Save current settings to a preset file (excluding webhooks and keybinds)"""
+        try:
+            # Ask user for preset name
+            preset_name = simpledialog.askstring("Save Preset", "Enter preset name:")
+            if not preset_name:
+                return
+            
+            # Clean filename
+            import re
+            preset_name = re.sub(r'[<>:"/\\|?*]', '_', preset_name)
+            
+            # Collect all settings except webhooks and keybinds
+            preset_data = {
+                # Auto-purchase settings
+                'auto_purchase_enabled': getattr(self, 'auto_purchase_var', None) and self.auto_purchase_var.get() if hasattr(self, 'auto_purchase_var') else False,
+                'auto_purchase_amount': getattr(self, 'auto_purchase_amount', 100),
+                'loops_per_purchase': getattr(self, 'loops_per_purchase', 1),
+                'point_coords': getattr(self, 'point_coords', {}),
+                
+                # PD Controller settings
+                'kp': getattr(self, 'kp', 0.1),
+                'kd': getattr(self, 'kd', 0.5),
+                
+                # Timing settings
+                'scan_timeout': getattr(self, 'scan_timeout', 15.0),
+                'wait_after_loss': getattr(self, 'wait_after_loss', 1.0),
+                'purchase_delay_after_key': getattr(self, 'purchase_delay_after_key', 2.0),
+                'purchase_click_delay': getattr(self, 'purchase_click_delay', 1.0),
+                'purchase_after_type_delay': getattr(self, 'purchase_after_type_delay', 1.0),
+                
+                # Overlay settings
+                'overlay_area': getattr(self, 'overlay_area', {}),
+                
+                # Recovery settings
+                'recovery_enabled': getattr(self, 'recovery_enabled', True),
+                
+                # Performance settings
+                'silent_mode': getattr(self, 'silent_mode', False),
+                'verbose_logging': getattr(self, 'verbose_logging', False),
+                
+                # Theme settings
+                'dark_theme': getattr(self, 'dark_theme', True),
+                
+                # Auto-update settings
+                'auto_update_enabled': getattr(self, 'auto_update_enabled', False),
+            }
+            
+            # Save to presets folder
+            preset_file = os.path.join(self.presets_dir, f"{preset_name}.json")
+            with open(preset_file, 'w') as f:
+                json.dump(preset_data, f, indent=2)
+            
+            self.status_msg.config(text=f'Preset "{preset_name}" saved successfully!', foreground='green')
+            print(f'✅ Preset saved: {preset_file}')
+            
+        except Exception as e:
+            self.status_msg.config(text=f'Error saving preset: {e}', foreground='red')
+            print(f'❌ Error saving preset: {e}')
+
+    def load_preset(self):
+        """Load settings from a preset file"""
+        try:
+            # Show file dialog to select preset
+            preset_file = filedialog.askopenfilename(
+                title="Load Preset",
+                initialdir=self.presets_dir,
+                filetypes=[("JSON files", "*.json"), ("All files", "*.*")]
+            )
+            
+            if not preset_file:
+                return
+            
+            # Load preset data
+            with open(preset_file, 'r') as f:
+                preset_data = json.load(f)
+            
+            # Apply settings (excluding webhooks and keybinds)
+            
+            # Auto-purchase settings
+            if hasattr(self, 'auto_purchase_var'):
+                self.auto_purchase_var.set(preset_data.get('auto_purchase_enabled', False))
+            self.auto_purchase_amount = preset_data.get('auto_purchase_amount', 100)
+            if hasattr(self, 'amount_var'):
+                self.amount_var.set(self.auto_purchase_amount)
+            
+            self.loops_per_purchase = preset_data.get('loops_per_purchase', 1)
+            if hasattr(self, 'loops_var'):
+                self.loops_var.set(self.loops_per_purchase)
+            
+            self.point_coords = preset_data.get('point_coords', {})
+            # Update point buttons if they exist
+            for idx in range(1, 5):
+                if hasattr(self, 'point_buttons') and idx in self.point_buttons:
+                    self.update_point_button(idx)
+            
+            # PD Controller settings
+            self.kp = preset_data.get('kp', 0.1)
+            if hasattr(self, 'kp_var'):
+                self.kp_var.set(self.kp)
+            
+            self.kd = preset_data.get('kd', 0.5)
+            if hasattr(self, 'kd_var'):
+                self.kd_var.set(self.kd)
+            
+            # Timing settings
+            self.scan_timeout = preset_data.get('scan_timeout', 15.0)
+            if hasattr(self, 'timeout_var'):
+                self.timeout_var.set(self.scan_timeout)
+            
+            self.wait_after_loss = preset_data.get('wait_after_loss', 1.0)
+            if hasattr(self, 'wait_var'):
+                self.wait_var.set(self.wait_after_loss)
+            
+            self.purchase_delay_after_key = preset_data.get('purchase_delay_after_key', 2.0)
+            self.purchase_click_delay = preset_data.get('purchase_click_delay', 1.0)
+            self.purchase_after_type_delay = preset_data.get('purchase_after_type_delay', 1.0)
+            
+            # Overlay settings
+            if 'overlay_area' in preset_data and preset_data['overlay_area']:
+                self.overlay_area = preset_data['overlay_area']
+            
+            # Recovery settings
+            self.recovery_enabled = preset_data.get('recovery_enabled', True)
+            
+            # Performance settings
+            self.silent_mode = preset_data.get('silent_mode', False)
+            self.verbose_logging = preset_data.get('verbose_logging', False)
+            
+            # Theme settings
+            new_theme = preset_data.get('dark_theme', True)
+            if new_theme != self.dark_theme:
+                self.dark_theme = new_theme
+                self.apply_theme()
+                self.theme_btn.config(text='☀ Light Mode' if self.dark_theme else '🌙 Dark Mode')
+            
+            # Auto-update settings
+            self.auto_update_enabled = preset_data.get('auto_update_enabled', False)
+            if hasattr(self, 'auto_update_btn'):
+                self.auto_update_btn.config(text=f'🔄 Auto Update: {"ON" if self.auto_update_enabled else "OFF"}')
+            
+            preset_name = os.path.splitext(os.path.basename(preset_file))[0]
+            self.status_msg.config(text=f'Preset "{preset_name}" loaded successfully!', foreground='green')
+            print(f'✅ Preset loaded: {preset_file}')
+            
+            # Auto-save the loaded settings as current defaults
+            self.auto_save_settings()
+            
+        except Exception as e:
+            self.status_msg.config(text=f'Error loading preset: {e}', foreground='red')
+            print(f'❌ Error loading preset: {e}')
 
     def load_basic_settings(self):
         """Load basic settings before UI creation"""

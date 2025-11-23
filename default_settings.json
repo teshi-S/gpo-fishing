@@ -13,10 +13,10 @@
   "scan_timeout": 15.0,
   "wait_after_loss": 1.0,
   "smart_check_interval": 15.0,
-  "webhook_url": "https://ptb.discord.com/api/webhooks/1442152339938218055/tXPrbtb3qlHnJEehq1wSsKywO0PnISy2Y8dS6ZWSCXRo928yUwypxjClcJWUqy2c07rK",
-  "webhook_enabled": true,
-  "webhook_interval": 8,
+  "webhook_url": "",
+  "webhook_enabled": false,
+  "webhook_interval": 10,
   "auto_update_enabled": false,
   "dark_theme": true,
-  "last_saved": "2025-11-23T17:34:56.192099"
+  "last_saved": "2025-11-23T19:59:56.636064"
 }
