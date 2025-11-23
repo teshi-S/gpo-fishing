@@ -26,12 +26,12 @@
   "wait_after_loss": 1.0,
   "smart_check_interval": 15.0,
   "auto_update_enabled": false,
-  "dark_theme": false,
+  "current_theme": "christmas",
   "hotkeys": {
     "toggle_loop": "f1",
     "toggle_overlay": "f2",
     "exit": "f3",
     "toggle_tray": "f4"
   },
-  "last_saved": "2025-11-23T23:02:59.104362"
+  "last_saved": "2025-11-24T00:10:49.359467"
 }
