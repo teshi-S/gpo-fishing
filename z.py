@@ -1659,10 +1659,10 @@ Sequence (per user spec):
             help_btn.grid(row=row, column=2, padx=(10, 0), pady=5)
             
             tooltips = {
-                1: "Click to set: Shop NPC or buy button location",
-                2: "Click to set: Amount input field location", 
-                3: "Click to set: Confirm/purchase button location",
-                4: "Click to set: Close menu/exit shop location"
+                1: "Click to set: yes/buy button (same area)",
+                2: "Click to set: Input amount area (also ... area)", 
+                3: "Click to set: Close button",
+                4: "Click to set: Where you want to throw the rod at. (location on the screen where the water is)"
             }
             ToolTip(help_btn, tooltips[i])
             row += 1
