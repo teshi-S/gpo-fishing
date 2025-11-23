@@ -1,7 +1,28 @@
 @echo off
-title GPO Autofish - Open Source
+title GPO Autofish - Development Mode
+color 0A
 
+echo ========================================
+echo   GPO Autofish - Development Mode
+echo ========================================
+echo.
+echo This mode shows console output for debugging
+echo.
+echo Default Hotkeys:
+echo   F1 - Start/Pause/Resume Fishing
+echo   F2 - Toggle Overlay
+echo   F3 - Exit Program
+echo   F4 - Toggle System Tray
+echo.
+echo Note: If hotkeys don't work, try running as Administrator
+echo.
 echo Starting GPO Autofish...
-echo Note: If hotkeys (F1/F2/F3) don't work, try running as Administrator
+echo ========================================
+echo.
+
 python z.py
-pause
+
+echo.
+echo ========================================
+echo Program ended. Press any key to close...
+pause >nul

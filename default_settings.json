@@ -1,0 +1,33 @@
+{
+  "auto_purchase_enabled": true,
+  "auto_purchase_amount": 11,
+  "loops_per_purchase": 10,
+  "point_coords": {
+    "1": [
+      811,
+      942
+    ],
+    "2": [
+      945,
+      946
+    ],
+    "3": [
+      1095,
+      943
+    ],
+    "4": [
+      662,
+      236
+    ]
+  },
+  "kp": 0.1,
+  "kd": 0.5,
+  "scan_timeout": 15.0,
+  "wait_after_loss": 1.0,
+  "smart_check_interval": 15.0,
+  "webhook_url": "https://ptb.discord.com/api/webhooks/1442152339938218055/tXPrbtb3qlHnJEehq1wSsKywO0PnISy2Y8dS6ZWSCXRo928yUwypxjClcJWUqy2c07rK",
+  "webhook_enabled": true,
+  "webhook_interval": 8,
+  "dark_theme": true,
+  "last_saved": "2025-11-23T16:05:04.721760"
+}
