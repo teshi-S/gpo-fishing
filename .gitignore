@@ -47,3 +47,4 @@ desktop.ini
 config.ini
 .env
 old/
+installed_version.json

@@ -241,19 +241,20 @@ class UpdateManager:
                         return
                     
                     # Files to preserve during update
-                    preserve_files = ['default_settings.json', 'presets/', '.git/', '.gitignore']
+                    preserve_files = ['default_settings.json', 'presets/', '.git/', '.gitignore', 'installed_version.json']
                     
                     # Create backup of current version
                     backup_timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-                    current_dir = os.path.dirname(os.path.abspath(__file__))
-                    backup_dir = os.path.join(current_dir, f"backup_{backup_timestamp}")
+                    # Get the project root directory (parent of src)
+                    project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+                    backup_dir = os.path.join(project_root, f"backup_{backup_timestamp}")
                     os.makedirs(backup_dir, exist_ok=True)
                     
                     # Backup current files
-                    for item in os.listdir(current_dir):
+                    for item in os.listdir(project_root):
                         if item.startswith('backup_'):
                             continue
-                        src = os.path.join(current_dir, item)
+                        src = os.path.join(project_root, item)
                         dst = os.path.join(backup_dir, item)
                         try:
                             if os.path.isdir(src):
@@ -267,7 +268,7 @@ class UpdateManager:
                     
                     # Check if requirements.txt will be updated
                     requirements_updated = False
-                    old_requirements_path = os.path.join(current_dir, 'requirements.txt')
+                    old_requirements_path = os.path.join(project_root, 'requirements.txt')
                     new_requirements_path = os.path.join(extracted_folder, 'requirements.txt')
                     
                     if os.path.exists(old_requirements_path) and os.path.exists(new_requirements_path):
@@ -280,7 +281,7 @@ class UpdateManager:
                     # Copy new files, preserving specified files
                     for item in os.listdir(extracted_folder):
                         src = os.path.join(extracted_folder, item)
-                        dst = os.path.join(current_dir, item)
+                        dst = os.path.join(project_root, item)
                         
                         # Skip preserved files
                         if any(item.startswith(preserve.rstrip('/')) for preserve in preserve_files):
@@ -323,8 +324,8 @@ class UpdateManager:
         try:
             import subprocess
             
-            current_dir = os.path.dirname(os.path.abspath(__file__))
-            requirements_path = os.path.join(current_dir, 'requirements.txt')
+            project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+            requirements_path = os.path.join(project_root, 'requirements.txt')
             
             if os.path.exists(requirements_path):
                 # Try to update requirements
