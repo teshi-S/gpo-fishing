@@ -16,34 +16,42 @@ class FishingBot:
         self.force_stop_flag = False
     
     def check_recovery_needed(self):
-        """Simple recovery check - detects stuck states"""
+        """Smart recovery check - detects genuinely stuck states"""
         if not self.app.recovery_enabled or not self.app.main_loop_active or self.recovery_in_progress:
             return False
             
         current_time = time.time()
         
-        # Check every 15 seconds
-        if current_time - self.app.last_smart_check < 15.0:
+        # Check every 20 seconds
+        if current_time - self.app.last_smart_check < 20.0:
             return False
             
         self.app.last_smart_check = current_time
         
         # Check if current state has been running too long
         state_duration = current_time - self.app.state_start_time
-        max_duration = self.app.max_state_duration.get(self.app.current_state, 60.0)
         
-        # Shorter timeout for idle state
-        if self.app.current_state == "idle" and state_duration > 30.0:
-            max_duration = 30.0
+        # Reasonable timeouts for each state
+        max_durations = {
+            "idle": 45.0,           # Between fishing cycles
+            "fishing": 90.0,        # Active fishing with fish control
+            "casting": 20.0,        # Casting the line
+            "menu_opening": 15.0,   # Opening purchase menu
+            "typing": 10.0,         # Typing purchase amount
+            "clicking": 8.0,        # Individual clicks
+            "purchasing": 60.0      # Full purchase sequence
+        }
+        
+        max_duration = max_durations.get(self.app.current_state, 60.0)
         
         if state_duration > max_duration:
             self.app.log(f'🚨 State "{self.app.current_state}" stuck for {state_duration:.0f}s (max: {max_duration}s)', "error")
             return True
             
-        # Check for complete freeze
+        # Check for complete activity freeze
         time_since_activity = current_time - self.app.last_activity_time
-        if time_since_activity > 90:
-            self.app.log(f'⚠️ Complete freeze detected - no activity for {time_since_activity:.0f}s', "error")
+        if time_since_activity > 120:  # 2 minutes of no activity
+            self.app.log(f'⚠️ No activity for {time_since_activity:.0f}s - loop may be frozen', "error")
             return True
             
         return False
@@ -66,7 +74,7 @@ class FishingBot:
             self.watchdog_thread.join(timeout=2.0)
     
     def _watchdog_monitor(self):
-        """AGGRESSIVE watchdog that runs OUTSIDE main loop to catch stuck states"""
+        """Smart watchdog that monitors for stuck states and restarts the loop"""
         while self.watchdog_active and self.app.main_loop_active:
             try:
                 current_time = time.time()
@@ -74,23 +82,23 @@ class FishingBot:
                 # Check heartbeat from main loop
                 heartbeat_age = current_time - self.last_loop_heartbeat
                 
-                # AGGRESSIVE: Check every 5 seconds, trigger if no heartbeat for 20 seconds
-                if heartbeat_age > 20.0:
-                    self.app.log(f'🚨 WATCHDOG TRIGGERED: No heartbeat for {heartbeat_age:.0f}s - FORCE RECOVERY', "error")
-                    self._force_recovery()
+                # Trigger recovery if no heartbeat for 30 seconds
+                if heartbeat_age > 30.0:
+                    self.app.log(f'🚨 WATCHDOG: No heartbeat for {heartbeat_age:.0f}s - Loop appears stuck', "error")
+                    self._restart_fishing_loop()
                     break
                 
-                # Also check traditional stuck states
+                # Check for stuck states
                 if self.check_recovery_needed():
-                    self.app.log('🚨 WATCHDOG: Stuck state detected - FORCE RECOVERY', "error")
-                    self._force_recovery()
+                    self.app.log('🚨 WATCHDOG: Stuck state detected - Restarting loop', "error")
+                    self._restart_fishing_loop()
                     break
                 
-                time.sleep(5.0)  # Check every 5 seconds
+                time.sleep(10.0)  # Check every 10 seconds
                 
             except Exception as e:
                 self.app.log(f'⚠️ Watchdog error: {e}', "error")
-                time.sleep(5.0)
+                time.sleep(10.0)
         
         self.app.log('🐕 Watchdog stopped', "verbose")
     
@@ -98,6 +106,56 @@ class FishingBot:
         """Update heartbeat from main loop"""
         self.last_loop_heartbeat = time.time()
     
+    def _restart_fishing_loop(self):
+        """Restart the fishing loop when it gets stuck"""
+        if self.recovery_in_progress:
+            return
+            
+        current_time = time.time()
+        
+        # Limit restart attempts
+        if self.app.recovery_count >= 5:
+            self.app.log(f'🛑 TOO MANY RESTARTS: {self.app.recovery_count} attempts. Stopping fishing.', "error")
+            self.app.main_loop_active = False
+            self.watchdog_active = False
+            return
+        
+        self.recovery_in_progress = True
+        self.app.recovery_count += 1
+        self.app.last_recovery_time = current_time
+        
+        self.app.log(f'🔄 RESTARTING LOOP #{self.app.recovery_count}/5 - Fishing got stuck', "important")
+        
+        # Clean up mouse state immediately
+        try:
+            if self.app.is_clicking:
+                win32api.mouse_event(win32con.MOUSEEVENTF_LEFTUP, 0, 0, 0, 0)
+                self.app.is_clicking = False
+        except:
+            pass
+        
+        # Set force stop flag to exit current loop
+        self.force_stop_flag = True
+        
+        # Reset state
+        self.app.last_activity_time = current_time
+        self.app.last_fish_time = current_time
+        self.app.set_recovery_state("idle", {"action": "loop_restart"})
+        
+        # Wait a moment for current loop to exit
+        time.sleep(2.0)
+        
+        # Reset flags and restart
+        self.force_stop_flag = False
+        self.last_loop_heartbeat = time.time()
+        
+        # Start fresh loop
+        self.app.log('🎣 Starting fresh fishing loop...', "important")
+        self.app.main_loop_thread = threading.Thread(target=self.run_main_loop, daemon=True)
+        self.app.main_loop_thread.start()
+        
+        self.recovery_in_progress = False
+
     def _force_recovery(self):
         """NUCLEAR OPTION: Force recovery when system is truly stuck"""
         if self.recovery_in_progress:
@@ -187,11 +245,13 @@ class FishingBot:
         if getattr(self.app, 'auto_purchase_var', None) and self.app.auto_purchase_var.get():
             self.app.purchase_counter += 1
             loops_needed = int(getattr(self.app, 'loops_per_purchase', 1)) if getattr(self.app, 'loops_per_purchase', None) is not None else 1
-            print(f'🔄 Purchase counter: {self.app.purchase_counter}/{loops_needed}')
+            print(f'🛒 Purchase counter: {self.app.purchase_counter}/{loops_needed}')
             if self.app.purchase_counter >= max(1, loops_needed):
                 try:
+                    print('🛒 Performing auto-purchase...')
                     self.perform_auto_purchase()
                     self.app.purchase_counter = 0
+                    print('🛒 Auto-purchase complete')
                 except Exception as e:
                     print(f'❌ AUTO-PURCHASE ERROR: {e}')
     
@@ -294,7 +354,7 @@ class FishingBot:
         dark_color = (25, 25, 25)
         white_color = (255, 255, 255)
         
-        # Start watchdog if not already running
+        # Start watchdog for stuck state detection
         if not self.watchdog_active:
             self.start_watchdog()
         
@@ -310,11 +370,22 @@ class FishingBot:
                     self.perform_auto_purchase()
                 
                 # Main fishing loop
+                # Main fishing loop
                 while self.app.main_loop_active and not self.force_stop_flag:
                     # Update heartbeat for watchdog
                     self.update_heartbeat()
                     
+                    # Check if loop should continue
+                    if not self.app.main_loop_active:
+                        print('🛑 Main loop stopped - main_loop_active is False')
+                        break
+                    if self.force_stop_flag:
+                        print('🛑 Main loop stopped - force_stop_flag is True')
+                        break
+                    
                     try:
+                        print(f'🎣 Fishing cycle #{self.app.fish_count + 1}')
+                        
                         # Cast line
                         self.app.set_recovery_state("casting", {"action": "initial_cast"})
                         self.cast_line()
@@ -331,35 +402,53 @@ class FishingBot:
                             # Update heartbeat frequently during detection
                             self.update_heartbeat()
                             
-                            # Timeout check
+                            # Timeout check - if no fish detected for too long, recast
                             current_time = time.time()
-                            if current_time - detection_start_time > self.app.scan_timeout + 10:
-                                print(f'Detection timeout after {self.app.scan_timeout + 10}s, recasting...')
-                                break
-                            
-                            # Get screenshot
-                            x = self.app.overlay_area['x']
-                            y = self.app.overlay_area['y']
-                            width = self.app.overlay_area['width']
-                            height = self.app.overlay_area['height']
-                            monitor = {'left': x, 'top': y, 'width': width, 'height': height}
-                            screenshot = sct.grab(monitor)
-                            img = np.array(screenshot)
-                            
-                            # Look for blue bar (target color)
-                            point1_x = None
-                            point1_y = None
-                            found_first = False
-                            for row_idx in range(height):
-                                for col_idx in range(width):
-                                    b, g, r = img[row_idx, col_idx, 0:3]
-                                    if r == target_color[0] and g == target_color[1] and b == target_color[2]:
-                                        point1_x = x + col_idx
-                                        point1_y = y + row_idx
-                                        found_first = True
-                                        break
-                                if found_first:
+                            if current_time - detection_start_time > self.app.scan_timeout:
+                                if not detected:
+                                    print(f'⏰ No fish detected after {self.app.scan_timeout}s, recasting...')
                                     break
+                                elif current_time - detection_start_time > self.app.scan_timeout + 15:
+                                    print(f'⏰ Fish control timeout after {self.app.scan_timeout + 15}s, recasting...')
+                                    # Clean up mouse state before recasting
+                                    if self.app.is_clicking:
+                                        win32api.mouse_event(win32con.MOUSEEVENTF_LEFTUP, 0, 0, 0, 0)
+                                        self.app.is_clicking = False
+                                    break
+                            
+                            # Get screenshot with error handling
+                            try:
+                                x = self.app.overlay_area['x']
+                                y = self.app.overlay_area['y']
+                                width = self.app.overlay_area['width']
+                                height = self.app.overlay_area['height']
+                                monitor = {'left': x, 'top': y, 'width': width, 'height': height}
+                                screenshot = sct.grab(monitor)
+                                img = np.array(screenshot)
+                            except Exception as screenshot_error:
+                                print(f'❌ Screenshot error: {screenshot_error}')
+                                time.sleep(0.1)
+                                continue
+                            
+                            # Look for blue bar (target color) with error handling
+                            try:
+                                point1_x = None
+                                point1_y = None
+                                found_first = False
+                                for row_idx in range(height):
+                                    for col_idx in range(width):
+                                        b, g, r = img[row_idx, col_idx, 0:3]
+                                        if r == target_color[0] and g == target_color[1] and b == target_color[2]:
+                                            point1_x = x + col_idx
+                                            point1_y = y + row_idx
+                                            found_first = True
+                                            break
+                                    if found_first:
+                                        break
+                            except Exception as detection_error:
+                                print(f'❌ Blue bar detection error: {detection_error}')
+                                time.sleep(0.1)
+                                continue
                             
                             if found_first:
                                 detected = True
@@ -371,9 +460,19 @@ class FishingBot:
                                 
                                 if was_detecting:
                                     print('Fish caught! Processing...')
+                                    
+                                    # Clean up mouse state immediately
+                                    if self.app.is_clicking:
+                                        win32api.mouse_event(win32con.MOUSEEVENTF_LEFTUP, 0, 0, 0, 0)
+                                        self.app.is_clicking = False
+                                    
+                                    # Increment fish counter when fish is actually caught
+                                    self.app.increment_fish_counter()
                                     time.sleep(self.app.wait_after_loss)
                                     was_detecting = False
                                     self.check_and_purchase()
+                                    # Continue to next fishing cycle
+                                    print('🐟 Fish processing complete')
                                     break
                                 
                                 time.sleep(0.1)
@@ -494,8 +593,9 @@ class FishingBot:
                             # Control the fishing
                             if dark_sections and white_top_y is not None:
                                 if not was_detecting:
-                                    self.app.increment_fish_counter()
-                                    self.app.set_recovery_state("idle")
+                                    # First time detecting fish - don't increment counter yet
+                                    print('Fish detected! Starting control...')
+                                    self.app.set_recovery_state("fishing", {"action": "fish_control_active"})
                                 was_detecting = True
                                 
                                 # Calculate error and control
@@ -527,6 +627,8 @@ class FishingBot:
                         
                     except Exception as e:
                         print(f'🚨 Main loop error: {e}')
+                        import traceback
+                        traceback.print_exc()
                         self.app.log(f'Main loop error: {e}', "error")
                         if not self.force_stop_flag:
                             time.sleep(1.0)
