@@ -10,7 +10,7 @@
   },
   "kp": 0.1,
   "kd": 0.5,
-  "scan_timeout": 15.0,
+  "scan_timeout": 14.0,
   "wait_after_loss": 1.0,
   "smart_check_interval": 15.0,
   "webhook_url": "https://ptb.discord.com/api/webhooks/1442286763136778441/-0pNm6BVGqmNc93sULoeV2dsW6JL90lPbUZ3d83Xb5cwbsQxLUI57TiKIaxVO-7n68Hi",
@@ -18,5 +18,5 @@
   "webhook_interval": 10,
   "dark_theme": true,
   "current_theme": "christmas",
-  "last_saved": "2025-11-24T05:23:20.408800"
+  "last_saved": "2025-11-24T06:34:47.384805"
 }

@@ -54,7 +54,16 @@ class SettingsManager:
             
             self.app.auto_purchase_amount = preset_data.get('auto_purchase_amount', 100)
             self.app.loops_per_purchase = preset_data.get('loops_per_purchase', 1)
-            self.app.point_coords = preset_data.get('point_coords', {})
+            
+            # Convert string keys back to integers for point_coords
+            loaded_coords = preset_data.get('point_coords', {})
+            self.app.point_coords = {}
+            for key, value in loaded_coords.items():
+                try:
+                    int_key = int(key)
+                    self.app.point_coords[int_key] = value
+                except (ValueError, TypeError):
+                    pass
             self.app.kp = preset_data.get('kp', 0.1)
             self.app.kd = preset_data.get('kd', 0.5)
             self.app.scan_timeout = preset_data.get('scan_timeout', 15.0)

@@ -1836,7 +1836,15 @@ Sequence (per user spec):
             if hasattr(self, 'loops_var'):
                 self.loops_var.set(self.loops_per_purchase)
             
-            self.point_coords = preset_data.get('point_coords', {})
+            # Convert string keys back to integers for point_coords
+            loaded_coords = preset_data.get('point_coords', {})
+            self.point_coords = {}
+            for key, value in loaded_coords.items():
+                try:
+                    int_key = int(key)
+                    self.point_coords[int_key] = value
+                except (ValueError, TypeError):
+                    pass
             # Update point buttons if they exist
             for idx in range(1, 5):
                 if hasattr(self, 'point_buttons') and idx in self.point_buttons:
@@ -1908,7 +1916,16 @@ Sequence (per user spec):
             # Load basic settings that don't require UI elements
             self.auto_purchase_amount = preset_data.get('auto_purchase_amount', 100)
             self.loops_per_purchase = preset_data.get('loops_per_purchase', 1)
-            self.point_coords = preset_data.get('point_coords', {})
+            
+            # Convert string keys back to integers for point_coords
+            loaded_coords = preset_data.get('point_coords', {})
+            self.point_coords = {}
+            for key, value in loaded_coords.items():
+                try:
+                    int_key = int(key)
+                    self.point_coords[int_key] = value
+                except (ValueError, TypeError):
+                    pass
             self.kp = preset_data.get('kp', 0.1)
             self.kd = preset_data.get('kd', 0.5)
             self.scan_timeout = preset_data.get('scan_timeout', 15.0)
