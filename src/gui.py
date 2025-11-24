@@ -163,9 +163,8 @@ class HotkeyGUI:
         self.webhook_interval = 10  # Send webhook every X loops
         self.webhook_counter = 0  # Track loops for webhook
         
-        # Auto-update settings - now using UpdateManager
-        self.auto_update_enabled = False
-        self.update_manager = None  # Will be initialized after GUI is ready
+        # Update manager - will be initialized after GUI is ready
+        self.update_manager = None
         
         # Performance settings
         self.silent_mode = False  # Reduce console logging
@@ -254,22 +253,14 @@ class HotkeyGUI:
         if TRAY_AVAILABLE:
             self.setup_system_tray()
         
-        # Initialize UpdateManager after GUI is ready with error handling
+        # Initialize UpdateManager after GUI is ready
         try:
             from updater import UpdateManager
             self.update_manager = UpdateManager(self)
-            print("✅ UpdateManager initialized successfully")
-            
-            # Check for updates immediately on startup if enabled, then start regular loop
-            if self.auto_update_enabled:
-                self.root.after(2000, lambda: self._safe_startup_update_check())
-            self.root.after(5000, lambda: self._safe_start_update_loop())
-            
+            print("✅ Simple UpdateManager initialized")
         except Exception as e:
             print(f"❌ Failed to initialize UpdateManager: {e}")
             self.update_manager = None
-            self.auto_update_enabled = False
-            self.auto_update_btn.config(text='🔄 Auto Update: ERROR')
     
     def create_scrollable_frame(self):
         """Create a modern scrollable frame using tkinter Canvas and Scrollbar"""
@@ -380,10 +371,11 @@ class HotkeyGUI:
         right_controls = ttk.Frame(control_panel)
         right_controls.grid(row=0, column=2, sticky='e')
         
-        # Auto-update toggle button
-        self.auto_update_btn = ttk.Button(right_controls, text='🔄 Auto Update: OFF', 
-                                         command=self.toggle_auto_update, style='TButton')
-        self.auto_update_btn.pack(side=tk.LEFT, padx=(0, 8))
+        # Manual update button
+        self.update_btn = ttk.Button(right_controls, text='🔄 Update', 
+                                    command=self.check_for_updates, style='TButton')
+        self.update_btn.pack(side=tk.LEFT, padx=(0, 8))
+        ToolTip(self.update_btn, "Check for and install updates from GitHub")
         
         if TRAY_AVAILABLE:
             ttk.Button(right_controls, text='📌 Tray', command=self.minimize_to_tray,
@@ -722,20 +714,8 @@ Sequence (per user spec):
         self.total_paused_time = 0
         self.reset_fish_counter()
         
-        # Clear any pending updates since we're starting fishing again
-        if self.update_manager:
-            try:
-                self.update_manager.pending_update = None
-                print("🎣 Cleared pending updates - fishing started")
-            except Exception as e:
-                print(f"❌ Error clearing pending updates: {e}")
-        
         # Update UI
         self.loop_status.config(text='● Main Loop: ACTIVE', style='StatusOn.TLabel')
-        
-        # Notify about auto-update status if enabled
-        if self.auto_update_enabled:
-            self.status_msg.config(text='Auto-update paused during fishing', foreground='orange')
         
         # Start the loop
         self.main_loop_thread = threading.Thread(target=self.main_loop, daemon=True)
@@ -759,17 +739,6 @@ Sequence (per user spec):
         
         # Update UI
         self.loop_status.config(text='● Main Loop: PAUSED', style='StatusOff.TLabel')
-        
-        # Check for pending updates using UpdateManager with error handling
-        if self.auto_update_enabled and self.update_manager:
-            try:
-                self.update_manager.show_pending_update()
-                # Also check for new updates when fishing stops
-                import threading
-                threading.Thread(target=self.update_manager.check_for_updates, daemon=True).start()
-            except Exception as e:
-                print(f"❌ Error checking for updates after pause: {e}")
-                self.update_status('Update check failed', 'error', '❌')
         
         self.log('⏸️ Fishing paused', "important")
     
@@ -1479,194 +1448,16 @@ Sequence (per user spec):
         except Exception as e:
             self.status_msg.config(text=f'Error opening Discord: {e}', foreground='red')
 
-    def _safe_startup_update_check(self):
-        """Safely run startup update check with error handling"""
-        try:
-            if self.update_manager:
-                self.update_manager.startup_update_check()
-        except Exception as e:
-            print(f"❌ Startup update check failed: {e}")
-            self.update_status('Update check failed', 'error', '❌')
-
-    def _safe_start_update_loop(self):
-        """Safely start update loop with error handling"""
-        try:
-            if self.update_manager:
-                self.update_manager.start_auto_update_loop()
-        except Exception as e:
-            print(f"❌ Auto-update loop failed: {e}")
-            self.update_status('Auto-update loop failed', 'error', '❌')
-
-    def toggle_auto_update(self):
-        """Toggle auto-update feature on/off with proper error handling"""
+    def check_for_updates(self):
+        """Manual update check triggered by user"""
         if not self.update_manager:
             self.update_status('UpdateManager not available', 'error', '❌')
             return
-            
-        self.auto_update_enabled = not self.auto_update_enabled
         
-        if self.auto_update_enabled:
-            self.auto_update_btn.config(text='🔄 Auto Update: ON')
-            if self.main_loop_active:
-                self.update_status('Auto-update enabled (will check when fishing stops)', 'info', '🔄')
-            else:
-                self.update_status('Auto-update enabled - checking for updates...', 'info', '🔄')
-                # Use UpdateManager for checking with error handling
-                try:
-                    import threading
-                    threading.Thread(target=self.update_manager.check_for_updates, daemon=True).start()
-                except Exception as e:
-                    print(f"❌ Error starting update check: {e}")
-                    self.update_status('Update check failed', 'error', '❌')
-        else:
-            self.auto_update_btn.config(text='🔄 Auto Update: OFF')
-            self.update_status('Auto-update disabled', 'warning', '📴')
-        
-        # Auto-save the setting immediately
-        self.auto_save_settings()
+        # Run update check in background thread
+        threading.Thread(target=self.update_manager.check_for_updates_manual, daemon=True).start()
 
-    # Update methods removed - now using UpdateManager class from updater.py
 
-    def download_update(self):
-        """Download and apply update automatically while preserving user settings"""
-        try:
-            import requests
-            import os
-            import sys
-            import shutil
-            import zipfile
-            import tempfile
-            from datetime import datetime
-            
-            self.status_msg.config(text='Downloading update...', foreground='#58a6ff')
-            
-            # Download the entire repository as ZIP
-            zip_url = "https://github.com/arielldev/gpo-fishing/archive/refs/heads/main.zip"
-            response = requests.get(zip_url, timeout=60)
-            
-            if response.status_code == 200:
-                # Create temporary directory for extraction
-                with tempfile.TemporaryDirectory() as temp_dir:
-                    zip_path = os.path.join(temp_dir, "update.zip")
-                    
-                    # Save ZIP file
-                    with open(zip_path, 'wb') as f:
-                        f.write(response.content)
-                    
-                    # Extract ZIP
-                    with zipfile.ZipFile(zip_path, 'r') as zip_ref:
-                        zip_ref.extractall(temp_dir)
-                    
-                    # Find extracted folder (usually repo-name-main)
-                    extracted_folder = None
-                    for item in os.listdir(temp_dir):
-                        if os.path.isdir(os.path.join(temp_dir, item)) and 'gpo-fishing' in item:
-                            extracted_folder = os.path.join(temp_dir, item)
-                            break
-                    
-                    if not extracted_folder:
-                        self.status_msg.config(text='❌ Update extraction failed', foreground='red')
-                        return
-                    
-                    # Files to preserve (user settings)
-                    preserve_files = [
-                        'default_settings.json',
-                        'presets/',
-                        '.git/',
-                        '.gitignore'
-                    ]
-                    
-                    # Create backup timestamp
-                    backup_timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-                    current_dir = os.path.dirname(os.path.abspath(__file__))
-                    
-                    # Backup current installation
-                    backup_dir = os.path.join(current_dir, f"backup_{backup_timestamp}")
-                    os.makedirs(backup_dir, exist_ok=True)
-                    
-                    # Copy current files to backup
-                    for item in os.listdir(current_dir):
-                        if item.startswith('backup_'):
-                            continue
-                        src = os.path.join(current_dir, item)
-                        dst = os.path.join(backup_dir, item)
-                        try:
-                            if os.path.isdir(src):
-                                shutil.copytree(src, dst)
-                            else:
-                                shutil.copy2(src, dst)
-                        except:
-                            pass
-                    
-                    self.status_msg.config(text='Installing update...', foreground='#58a6ff')
-                    
-                    # Update files (except preserved ones)
-                    for item in os.listdir(extracted_folder):
-                        src = os.path.join(extracted_folder, item)
-                        dst = os.path.join(current_dir, item)
-                        
-                        # Skip preserved files/folders
-                        if any(item.startswith(preserve.rstrip('/')) for preserve in preserve_files):
-                            continue
-                        
-                        try:
-                            if os.path.exists(dst):
-                                if os.path.isdir(dst):
-                                    shutil.rmtree(dst)
-                                else:
-                                    os.remove(dst)
-                            
-                            if os.path.isdir(src):
-                                shutil.copytree(src, dst)
-                            else:
-                                shutil.copy2(src, dst)
-                        except Exception as e:
-                            print(f"Error updating {item}: {e}")
-                    
-                    self.status_msg.config(text='✅ Update installed! Restarting...', foreground='green')
-                    
-                    # Schedule restart after showing message
-                    self.root.after(2000, self.restart_application)
-                    
-            else:
-                self.status_msg.config(text='❌ Download failed', foreground='red')
-                
-        except Exception as e:
-            self.status_msg.config(text=f'Update error: {str(e)[:30]}...', foreground='red')
-
-    def restart_application(self):
-        """Restart the application after update"""
-        try:
-            import sys
-            import os
-            import subprocess
-            
-            # Get the current script path
-            script_path = os.path.abspath(__file__)
-            
-            # Close current application
-            self.root.quit()
-            self.root.destroy()
-            
-            # Start new instance
-            if getattr(sys, 'frozen', False):
-                # If running as exe
-                subprocess.Popen([sys.executable])
-            else:
-                # If running as Python script
-                subprocess.Popen([sys.executable, script_path])
-            
-            # Exit current process
-            sys.exit(0)
-            
-        except Exception as e:
-            print(f"Restart failed: {e}")
-            sys.exit(1)
-
-    def start_auto_update_loop(self):
-        """Start the auto-update checking loop using UpdateManager"""
-        # UpdateManager handles its own scheduling, so we don't need to do anything here
-        pass
     
     def update_status(self, message, status_type='info', icon=''):
         """Update status message from UpdateManager"""
@@ -1946,7 +1737,6 @@ Sequence (per user spec):
             'webhook_url': getattr(self, 'webhook_url', ''),
             'webhook_enabled': getattr(self, 'webhook_enabled', False),
             'webhook_interval': getattr(self, 'webhook_interval', 10),
-            'auto_update_enabled': getattr(self, 'auto_update_enabled', False),
             'dark_theme': getattr(self, 'dark_theme', True),
             'current_theme': getattr(self, 'current_theme', 'default'),
             'last_saved': datetime.now().isoformat()
@@ -2002,9 +1792,6 @@ Sequence (per user spec):
                 
                 # Theme settings
                 'dark_theme': getattr(self, 'dark_theme', True),
-                
-                # Auto-update settings
-                'auto_update_enabled': getattr(self, 'auto_update_enabled', False),
             }
             
             # Save to presets folder
@@ -2095,10 +1882,7 @@ Sequence (per user spec):
                 self.apply_theme()
                 self.theme_btn.config(text='☀ Light Mode' if self.dark_theme else '🌙 Dark Mode')
             
-            # Auto-update settings
-            self.auto_update_enabled = preset_data.get('auto_update_enabled', False)
-            if hasattr(self, 'auto_update_btn'):
-                self.auto_update_btn.config(text=f'🔄 Auto Update: {"ON" if self.auto_update_enabled else "OFF"}')
+
             
             preset_name = os.path.splitext(os.path.basename(preset_file))[0]
             self.status_msg.config(text=f'Preset "{preset_name}" loaded successfully!', foreground='green')
@@ -2133,7 +1917,6 @@ Sequence (per user spec):
             self.webhook_url = preset_data.get('webhook_url', '')
             self.webhook_enabled = preset_data.get('webhook_enabled', False)
             self.webhook_interval = preset_data.get('webhook_interval', 10)
-            self.auto_update_enabled = preset_data.get('auto_update_enabled', False)
             self.dark_theme = preset_data.get('dark_theme', True)
             self.current_theme = preset_data.get('current_theme', 'default')
             
@@ -2189,15 +1972,7 @@ Sequence (per user spec):
         except AttributeError:
             pass  # Labels not created yet
 
-    def update_auto_update_button(self):
-        """Update auto-update button text based on current state"""
-        try:
-            if self.auto_update_enabled:
-                self.auto_update_btn.config(text='🔄 Auto Update: ON')
-            else:
-                self.auto_update_btn.config(text='🔄 Auto Update: OFF')
-        except AttributeError:
-            pass  # Button not created yet
+
 
     def setup_system_tray(self):
         """Setup system tray functionality"""

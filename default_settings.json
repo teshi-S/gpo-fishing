@@ -3,10 +3,7 @@
   "auto_purchase_amount": 10,
   "loops_per_purchase": 10,
   "point_coords": {
-    "1": [
-      758,
-      447
-    ],
+    "1": null,
     "2": null,
     "3": null,
     "4": null
@@ -17,10 +14,9 @@
   "wait_after_loss": 1.0,
   "smart_check_interval": 15.0,
   "webhook_url": "https://ptb.discord.com/api/webhooks/1442286763136778441/-0pNm6BVGqmNc93sULoeV2dsW6JL90lPbUZ3d83Xb5cwbsQxLUI57TiKIaxVO-7n68Hi",
-  "webhook_enabled": true,
+  "webhook_enabled": false,
   "webhook_interval": 10,
-  "auto_update_enabled": false,
   "dark_theme": true,
   "current_theme": "christmas",
-  "last_saved": "2025-11-24T01:35:09.166179"
+  "last_saved": "2025-11-24T05:23:20.408800"
 }
