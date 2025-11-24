@@ -1147,7 +1147,9 @@ Sequence (per user spec):
         
         # Point buttons for auto-purchase
         self.point_buttons = {}
-        self.point_coords = {1: None, 2: None, 3: None, 4: None}
+        # Initialize point_coords only if not already set (preserve loaded values)
+        if not hasattr(self, 'point_coords'):
+            self.point_coords = {1: None, 2: None, 3: None, 4: None}
         
         for i in range(1, 5):
             ttk.Label(frame, text=f'Point {i}:').grid(row=row, column=0, sticky='e', pady=5, padx=(0, 10))
