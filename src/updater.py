@@ -25,80 +25,110 @@ class UpdateManager:
         """Manual update check triggered by user"""
         try:
             self.app.update_status('Checking for updates...', 'info', '🔍')
+            print("🔍 Manual update check started")
             
             # Check GitHub for latest commit
             response = requests.get(self.repo_url, timeout=10)
             if response.status_code != 200:
                 self.app.update_status('Failed to check for updates', 'error', '❌')
+                print(f"❌ GitHub API returned status {response.status_code}")
                 return
             
             commit_data = response.json()
             commit_hash = commit_data['sha'][:7]
             commit_message = commit_data['commit']['message'].split('\n')[0]
             
-            # Show update dialog
-            self._show_update_dialog(commit_hash, commit_message, commit_data)
+            print(f"✅ Found commit: {commit_hash} - {commit_message}")
+            
+            # Always show update dialog for manual checks (let user decide)
+            self.app.root.after(0, lambda: self._show_update_dialog(commit_hash, commit_message, commit_data))
             
         except requests.exceptions.ConnectionError:
             self.app.update_status('No internet connection', 'error', '❌')
+            print("❌ No internet connection")
         except requests.exceptions.Timeout:
             self.app.update_status('Update check timed out', 'error', '❌')
+            print("❌ Update check timed out")
         except Exception as e:
             self.app.update_status(f'Update check failed: {str(e)[:20]}...', 'error', '❌')
+            print(f"❌ Update check error: {e}")
 
     def _show_update_dialog(self, commit_hash, commit_message, commit_data):
         """Show simple update dialog"""
-        dialog = tk.Toplevel(self.app.root)
-        dialog.title("Update Available")
-        dialog.geometry("450x250")
-        dialog.resizable(False, False)
-        dialog.transient(self.app.root)
-        dialog.grab_set()
+        try:
+            print(f"🔄 Showing update dialog for commit {commit_hash}")
+            
+            dialog = tk.Toplevel(self.app.root)
+            dialog.title("Update Available")
+            dialog.geometry("450x250")
+            dialog.resizable(False, False)
+            dialog.transient(self.app.root)
+            dialog.grab_set()
+            
+            # Force dialog to be on top and visible
+            dialog.attributes('-topmost', True)
+            dialog.lift()
+            dialog.focus_force()
+            
+            # Center the dialog
+            dialog.update_idletasks()
+            x = (dialog.winfo_screenwidth() // 2) - (dialog.winfo_width() // 2)
+            y = (dialog.winfo_screenheight() // 2) - (dialog.winfo_height() // 2)
+            dialog.geometry(f"+{x}+{y}")
+            
+            print("✅ Update dialog created and positioned")
+            
+            # Main frame
+            main_frame = ttk.Frame(dialog, padding="20")
+            main_frame.pack(fill="both", expand=True)
+            
+            # Title
+            title_label = ttk.Label(main_frame, text="🔄 Update Available", 
+                                   font=("Arial", 14, "bold"))
+            title_label.pack(pady=(0, 15))
+            
+            # Info
+            info_frame = ttk.Frame(main_frame)
+            info_frame.pack(fill="x", pady=(0, 20))
+            
+            ttk.Label(info_frame, text=f"Latest Commit: {commit_hash}", 
+                     font=("Arial", 10)).pack(anchor="w")
+            ttk.Label(info_frame, text=f"Changes: {commit_message}", 
+                     font=("Arial", 10), wraplength=400).pack(anchor="w", pady=(5, 0))
+            
+            # Warning
+            warning_label = ttk.Label(main_frame, 
+                                     text="⚠️ This will download and install the latest version.\nYour settings will be preserved.",
+                                     font=("Arial", 9), foreground="orange")
+            warning_label.pack(pady=(0, 20))
+            
+            # Buttons
+            btn_frame = ttk.Frame(main_frame)
+            btn_frame.pack(fill="x")
+            
+            def on_update():
+                dialog.destroy()
+                self._download_and_install_update(commit_data)
+            
+            def on_cancel():
+                dialog.destroy()
+                self.app.update_status('Update cancelled', 'info', '❌')
+            
+            ttk.Button(btn_frame, text="Update Now", command=on_update).pack(side="right", padx=(10, 0))
+            ttk.Button(btn_frame, text="Cancel", command=on_cancel).pack(side="right")
+            
+            print("✅ Update dialog fully created with buttons")
         
-        # Center the dialog
-        dialog.update_idletasks()
-        x = (dialog.winfo_screenwidth() // 2) - (dialog.winfo_width() // 2)
-        y = (dialog.winfo_screenheight() // 2) - (dialog.winfo_height() // 2)
-        dialog.geometry(f"+{x}+{y}")
-        
-        # Main frame
-        main_frame = ttk.Frame(dialog, padding="20")
-        main_frame.pack(fill="both", expand=True)
-        
-        # Title
-        title_label = ttk.Label(main_frame, text="🔄 Update Available", 
-                               font=("Arial", 14, "bold"))
-        title_label.pack(pady=(0, 15))
-        
-        # Info
-        info_frame = ttk.Frame(main_frame)
-        info_frame.pack(fill="x", pady=(0, 20))
-        
-        ttk.Label(info_frame, text=f"Latest Commit: {commit_hash}", 
-                 font=("Arial", 10)).pack(anchor="w")
-        ttk.Label(info_frame, text=f"Changes: {commit_message}", 
-                 font=("Arial", 10), wraplength=400).pack(anchor="w", pady=(5, 0))
-        
-        # Warning
-        warning_label = ttk.Label(main_frame, 
-                                 text="⚠️ This will download and install the latest version.\nYour settings will be preserved.",
-                                 font=("Arial", 9), foreground="orange")
-        warning_label.pack(pady=(0, 20))
-        
-        # Buttons
-        btn_frame = ttk.Frame(main_frame)
-        btn_frame.pack(fill="x")
-        
-        def on_update():
-            dialog.destroy()
-            self._download_and_install_update(commit_data)
-        
-        def on_cancel():
-            dialog.destroy()
-            self.app.update_status('Update cancelled', 'info', '❌')
-        
-        ttk.Button(btn_frame, text="Update Now", command=on_update).pack(side="right", padx=(10, 0))
-        ttk.Button(btn_frame, text="Cancel", command=on_cancel).pack(side="right")
+        except Exception as e:
+            print(f"❌ Error creating update dialog: {e}")
+            # Fallback: show simple messagebox
+            import tkinter.messagebox as msgbox
+            result = msgbox.askyesno("Update Available", 
+                                   f"New update available!\n\nCommit: {commit_hash}\nChanges: {commit_message}\n\nDownload and install?")
+            if result:
+                self._download_and_install_update(commit_data)
+            else:
+                self.app.update_status('Update cancelled', 'info', '❌')
 
     def _download_and_install_update(self, commit_data):
         """Download and install the update with progress feedback"""
