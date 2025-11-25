@@ -30,29 +30,33 @@ if errorlevel 1 (
 
 echo.
 echo [3/4] Installing required packages...
-echo Installing core dependencies...
+echo Installing essential dependencies directly...
 echo This may take a few minutes...
-pip install -r requirements.txt --no-warn-script-location
-if errorlevel 1 (
-    echo ERROR: Failed to install packages from requirements.txt
-    echo.
-    echo Trying alternative installation method...
-    echo Installing packages individually...
-    python -m pip install customtkinter --no-warn-script-location
-    python -m pip install darkdetect --no-warn-script-location
-    python -m pip install keyboard --no-warn-script-location
-    python -m pip install mss --no-warn-script-location
-    python -m pip install numpy --no-warn-script-location
-    python -m pip install packaging --no-warn-script-location
-    python -m pip install pillow --no-warn-script-location
-    python -m pip install pynput --no-warn-script-location
-    python -m pip install pyinstaller --no-warn-script-location
-    python -m pip install pywin32 --no-warn-script-location
-    python -m pip install pystray --no-warn-script-location
-    python -m pip install six --no-warn-script-location
-    python -m pip install requests --no-warn-script-location
 
+echo Installing core packages...
+python -m pip install keyboard==0.13.5 --no-warn-script-location
+python -m pip install pynput==1.8.1 --no-warn-script-location
+python -m pip install mss==10.1.0 --no-warn-script-location
+python -m pip install numpy --no-warn-script-location
+python -m pip install pillow --no-warn-script-location
+python -m pip install requests --no-warn-script-location
+python -m pip install pywin32 --no-warn-script-location
+
+echo Installing optional UI packages...
+python -m pip install pystray --no-warn-script-location
+if errorlevel 1 (
+    echo WARNING: pystray installation failed - system tray will be disabled
+)
+
+echo Verifying core installation...
+python -c "import keyboard, pynput, mss, numpy, PIL, requests, win32api; print('✓ All core packages installed')" 2>nul
+if errorlevel 1 (
+    echo ERROR: Core package installation failed
+    echo.
+    echo Trying with --user flag...
+    python -m pip install --user keyboard pynput mss numpy pillow requests pywin32
     
+    python -c "import keyboard, pynput, mss, numpy, PIL, requests, win32api; print('✓ Core packages installed with --user')" 2>nul
     if errorlevel 1 (
         echo ERROR: Installation failed completely
         echo.
@@ -60,7 +64,7 @@ if errorlevel 1 (
         echo 1. Run as administrator
         echo 2. Check your internet connection
         echo 3. Update Python to latest version
-        echo 4. Try: python -m pip install --user [package_name]
+        echo 4. Disable antivirus temporarily
         echo.
         pause
         exit /b 1
@@ -69,16 +73,36 @@ if errorlevel 1 (
 echo ✓ Packages installed successfully
 
 echo.
-echo [4/4] Verifying installation...
-python -c "import keyboard, pynput, mss, numpy, PIL; print('✓ Core modules verified')" 2>nul
-if errorlevel 1 (
-    echo WARNING: Some core modules may not be properly installed
-    echo The program may still work, but some features might be limited
-)
+echo [4/4] Final verification...
+echo Checking essential modules...
+python -c "import keyboard; print('✓ keyboard')" 2>nul || echo ✗ keyboard MISSING
+python -c "import pynput; print('✓ pynput')" 2>nul || echo ✗ pynput MISSING
+python -c "import mss; print('✓ mss')" 2>nul || echo ✗ mss MISSING
+python -c "import numpy; print('✓ numpy')" 2>nul || echo ✗ numpy MISSING
+python -c "import PIL; print('✓ pillow')" 2>nul || echo ✗ pillow MISSING
+python -c "import requests; print('✓ requests')" 2>nul || echo ✗ requests MISSING
+python -c "import win32api; print('✓ pywin32')" 2>nul || echo ✗ pywin32 MISSING
 
-python -c "import customtkinter, pystray; print('✓ UI modules verified')" 2>nul
+echo Checking optional modules...
+python -c "import pystray; print('✓ pystray (system tray support)')" 2>nul || echo ✗ pystray (system tray disabled)
+
+echo.
+echo Testing basic functionality...
+python -c "
+import sys
+try:
+    import keyboard, pynput, mss, numpy, PIL, requests, win32api
+    print('✓ All essential modules working')
+    sys.exit(0)
+except ImportError as e:
+    print(f'✗ Missing module: {e}')
+    sys.exit(1)
+" 2>nul
 if errorlevel 1 (
-    echo NOTE: UI modules may have issues - try running as administrator
+    echo.
+    echo WARNING: Some essential modules are missing
+    echo The program may not work correctly
+    echo Try running the installer as administrator
 )
 
 echo.
