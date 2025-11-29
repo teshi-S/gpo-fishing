@@ -1837,6 +1837,7 @@ Sequence (per user spec):
             'webhook_url': getattr(self, 'webhook_url', ''),
             'webhook_enabled': getattr(self, 'webhook_enabled', False),
             'webhook_interval': getattr(self, 'webhook_interval', 10),
+            'devil_fruit_alerts_enabled': getattr(self, 'devil_fruit_alerts_enabled', False),
             'dark_theme': getattr(self, 'dark_theme', True),
             'current_theme': getattr(self, 'current_theme', 'default'),
             'layout_settings': getattr(self.layout_manager, 'layouts', {}),
@@ -2129,6 +2130,8 @@ Sequence (per user spec):
                 self.webhook_url_var.set(self.webhook_url)
             if hasattr(self, 'webhook_interval_var'):
                 self.webhook_interval_var.set(self.webhook_interval)
+            if hasattr(self, 'devil_fruit_alerts_var'):
+                self.devil_fruit_alerts_var.set(self.devil_fruit_alerts_enabled)
             
             # Load OCR settings
             ocr_settings = preset_data.get('ocr_settings', {})

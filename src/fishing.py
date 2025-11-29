@@ -263,37 +263,42 @@ class FishingBot:
             
             print(f"🍎 Starting fruit storage workflow...")
             
-            # Step 1: Press the configured fruit storage key
+            # Step 1: Press the configured fruit storage key (instant)
             print(f"📦 Step 1: Pressing fruit storage key '{fruit_key}'")
             keyboard.press_and_release(fruit_key)
-            time.sleep(0.3)
+            time.sleep(0.2)  # Brief delay for inventory to open
             
-            # Step 2: Click at the configured fruit point
+            # Step 2: Click at the configured fruit point (instant)
             if hasattr(self.app, 'fruit_coords') and 'fruit_point' in self.app.fruit_coords:
                 fruit_x, fruit_y = self.app.fruit_coords['fruit_point']
                 print(f"🎯 Step 2: Clicking fruit point at ({fruit_x}, {fruit_y})")
                 self.app._click_at((fruit_x, fruit_y))
-                time.sleep(0.3)
+                time.sleep(0.1)  # Brief delay before storage action
             else:
                 print("❌ Fruit point coordinates not configured - skipping fruit storage")
                 return
             
-            # Step 2.5: Press backspace to drop fruit if storage fails
-            print(f"⬇️ Step 2.5: Pressing backspace to drop fruit")
-            keyboard.press_and_release('backspace')
-            time.sleep(0.3)
+            # Step 2.5: Click store button and WAIT for storage to complete
+            print(f"📦 Step 2.5: Clicking store and waiting for fruit storage...")
+            # The store action happens here - this is where we need the long wait
+            time.sleep(0.8)  # CRITICAL: Wait for fruit to actually store
             
-            # Step 3: Press the configured rod key
+            # Step 2.6: Press backspace to drop fruit if storage fails
+            print(f"⬇️ Step 2.6: Pressing backspace to drop fruit")
+            keyboard.press_and_release('backspace')
+            time.sleep(0.1)  # Brief delay
+            
+            # Step 3: Press the configured rod key (instant)
             print(f"🎣 Step 3: Pressing rod key '{rod_key}'")
             keyboard.press_and_release(rod_key)
-            time.sleep(0.3)
+            time.sleep(0.2)  # Brief delay for rod selection
             
-            # Step 4: Click at the configured bait point
+            # Step 4: Click at the configured bait point (instant)
             if hasattr(self.app, 'fruit_coords') and 'bait_point' in self.app.fruit_coords:
                 bait_x, bait_y = self.app.fruit_coords['bait_point']
                 print(f"🎯 Step 4: Clicking bait point at ({bait_x}, {bait_y})")
                 self.app._click_at((bait_x, bait_y))
-                time.sleep(0.3)
+                time.sleep(0.1)  # Brief delay
             else:
                 print("❌ Bait point coordinates not configured - skipping bait selection")
                 return
@@ -865,21 +870,22 @@ class FishingBot:
         """
         import re
         
-        # Look for pity counter patterns
-        pity_patterns = [
-            r'0/37',   # Legendary pity counter
-            r'0/40',   # Legendary pity counter  
-            r'0/92',   # Legendary pity counter
-            r'0/100'   # Legendary pity counter
-        ]
+        # Look for pity counter patterns (0/X means legendary drop occurred)
+        pity_patterns = []
+        # Generate patterns for 0/1 through 0/100
+        for i in range(1, 101):
+            pity_patterns.append(f'0/{i}')
+        
+        # Convert to regex patterns
+        pity_patterns = [re.escape(pattern) for pattern in pity_patterns]
         
         text_lower = drop_text.lower()
         
-        # Check for legendary indicators
-        legendary_keywords = ['legendary', 'pity']
+        # Check for legendary indicators (only "legendary" keyword, not "pity")
+        legendary_keywords = ['legendary']
         has_legendary_keyword = any(keyword in text_lower for keyword in legendary_keywords)
         
-        # Check for pity counter patterns
+        # Check for pity counter patterns (only 0/X means legendary)
         has_legendary_pity = any(re.search(pattern, drop_text) for pattern in pity_patterns)
         
         # Must have either legendary keyword OR legendary pity counter (0/X)

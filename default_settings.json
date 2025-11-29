@@ -22,16 +22,16 @@
   },
   "fruit_coords": {
     "fruit_point": [
-      955,
+      950,
       832
     ],
     "bait_point": [
-      955,
-      770
+      967,
+      768
     ]
   },
   "fruit_storage_enabled": true,
-  "fruit_storage_key": "2",
+  "fruit_storage_key": "1",
   "rod_key": "1",
   "kp": 0.1,
   "kd": 0.5,
@@ -93,5 +93,5 @@
     "sequence_delay": 0.5,
     "zoom_cooldown": 2.0
   },
-  "last_saved": "2025-11-29T12:00:09.388442"
+  "last_saved": "2025-11-29T15:30:00.678010"
 }
