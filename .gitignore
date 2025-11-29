@@ -48,4 +48,3 @@ config.ini
 .env
 old/
 installed_version.json
-default_settings.json

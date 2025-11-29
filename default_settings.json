@@ -1,5 +1,5 @@
 {
-  "auto_purchase_enabled": true,
+  "auto_purchase_enabled": false,
   "auto_purchase_amount": 10,
   "loops_per_purchase": 10,
   "point_coords": {
@@ -16,19 +16,82 @@
       937
     ],
     "4": [
-      698,
-      256
+      747,
+      350
     ]
   },
+  "fruit_coords": {
+    "fruit_point": [
+      955,
+      832
+    ],
+    "bait_point": [
+      967,
+      844
+    ]
+  },
+  "fruit_storage_enabled": true,
+  "fruit_storage_key": "2",
+  "rod_key": "1",
   "kp": 0.1,
   "kd": 0.5,
   "scan_timeout": 14.0,
   "wait_after_loss": 1.0,
   "smart_check_interval": 15.0,
-  "webhook_url": "https://discord.com/api/webhooks/1443975937766064300/BZZi8oFcCZk6OUQ3Dsxgn0Q6t8vgSB2wAWN9eW_OKUocKL1AObRpi2-7R34w66SmdvHh",
+  "webhook_url": "https://discord.com/api/webhooks/1444161437558636644/HKBOvfmxKZ6vhbplaNC7dD5ukbPCDPw-MZQaofsw97q5xmKkeyiB7qLQT4nlU8x53sSF",
   "webhook_enabled": true,
-  "webhook_interval": 10,
+  "webhook_interval": 8,
   "dark_theme": true,
-  "current_theme": "christmas",
-  "last_saved": "2025-11-28T16:45:48.156225"
+  "current_theme": "default",
+  "layout_settings": {
+    "bar": {
+      "name": "BAR LAYOUT",
+      "color": [
+        85,
+        170,
+        255
+      ],
+      "border_color": [
+        0,
+        100,
+        200
+      ],
+      "area": {
+        "x": 1058,
+        "y": 377,
+        "width": 183,
+        "height": 472
+      },
+      "description": "Fishing Bar Detection"
+    },
+    "drop": {
+      "name": "DROP LAYOUT",
+      "color": [
+        85,
+        255,
+        85
+      ],
+      "border_color": [
+        0,
+        200,
+        0
+      ],
+      "area": {
+        "x": 705,
+        "y": 76,
+        "width": 497,
+        "height": 122
+      },
+      "description": "Loot Drop Recognition"
+    }
+  },
+  "zoom_settings": {
+    "auto_zoom_enabled": true,
+    "zoom_out_steps": 5,
+    "zoom_in_steps": 8,
+    "step_delay": 0.1,
+    "sequence_delay": 0.5,
+    "zoom_cooldown": 2.0
+  },
+  "last_saved": "2025-11-29T10:41:20.319890"
 }

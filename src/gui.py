@@ -17,14 +17,25 @@ import time
 from datetime import datetime
 try:
     import pystray
-    from PIL import Image, ImageDraw, ImageTk
     TRAY_AVAILABLE = True
 except ImportError:
     TRAY_AVAILABLE = False
 
+try:
+    from PIL import Image, ImageDraw, ImageTk
+    PIL_AVAILABLE = True
+except ImportError:
+    PIL_AVAILABLE = False
+
 # Import the theme manager
-from themes import ThemeManager
-from fishing import FishingBot
+try:
+    from src.themes import ThemeManager
+    from src.fishing import FishingBot
+    from src.layout_manager import LayoutManager
+except ImportError:
+    from themes import ThemeManager
+    from fishing import FishingBot
+    from layout_manager import LayoutManager
 
 class ToolTip:
     """Simple tooltip class for hover explanations"""
@@ -119,7 +130,7 @@ class HotkeyGUI:
         
         # Set window icon
         try:
-            if os.path.exists("images/icon.webp"):
+            if PIL_AVAILABLE and os.path.exists("images/icon.webp"):
                 icon_image = Image.open("images/icon.webp")
                 icon_image = icon_image.resize((32, 32), Image.Resampling.LANCZOS)
                 icon_photo = ImageTk.PhotoImage(icon_image)
@@ -134,11 +145,10 @@ class HotkeyGUI:
         self.root.columnconfigure(0, weight=1)
         self.root.rowconfigure(0, weight=1)
         self.main_loop_active = False
-        self.overlay_active = False
+
         self.main_loop_thread = None
         self.recording_hotkey = None
-        self.overlay_window = None
-        self.overlay_drag_data = {'x': 0, 'y': 0, 'resize_edge': None, 'start_width': 0, 'start_height': 0, 'start_x': 0, 'start_y': 0}
+
         self.real_area = None
         self.is_clicking = False
         self.kp = 0.1
@@ -147,10 +157,8 @@ class HotkeyGUI:
         self.scan_timeout = 15.0
         self.wait_after_loss = 1.0
         self.dpi_scale = self.get_dpi_scale()
-        base_width = 172
-        base_height = 495
-        self.overlay_area = {'x': int(100 * self.dpi_scale), 'y': int(100 * self.dpi_scale), 'width': int(base_width * self.dpi_scale), 'height': int(base_height * self.dpi_scale)}
-        self.hotkeys = {'toggle_loop': 'f1', 'toggle_overlay': 'f2', 'exit': 'f3', 'toggle_tray': 'f4'}
+
+        self.hotkeys = {'toggle_loop': 'f1', 'toggle_layout': 'f2', 'exit': 'f3', 'toggle_tray': 'f4'}
         self.purchase_counter = 0
         self.purchase_delay_after_key = 2.0
         self.purchase_click_delay = 1.0
@@ -162,6 +170,13 @@ class HotkeyGUI:
         self.webhook_enabled = False
         self.webhook_interval = 10  # Send webhook every X loops
         self.webhook_counter = 0  # Track loops for webhook
+        self.devil_fruit_alerts_enabled = False  # Devil fruit rod legendary alerts
+        
+        # Fruit storage settings
+        self.fruit_storage_enabled = False
+        self.fruit_storage_key = '3'  # Default fruit key
+        self.rod_key = '1'  # Default rod key
+        self.fruit_coords = {}  # Store fruit and bait point coordinates
         
         # Update manager - will be initialized after GUI is ready
         self.update_manager = None
@@ -220,9 +235,36 @@ class HotkeyGUI:
         # Initialize theme manager
         self.theme_manager = ThemeManager(self)
         
+        # Initialize layout manager
+        self.layout_manager = LayoutManager(self)
+        
         # Initialize webhook manager
-        from webhook import WebhookManager
+        try:
+            from src.webhook import WebhookManager
+        except ImportError:
+            from webhook import WebhookManager
         self.webhook_manager = WebhookManager(self)
+        
+        # Initialize overlay manager
+        try:
+            from src.overlay import OverlayManager
+        except ImportError:
+            from overlay import OverlayManager
+        self.overlay_manager = OverlayManager(self)
+        
+        # Initialize OCR manager
+        try:
+            from src.ocr_manager import OCRManager
+        except ImportError:
+            from ocr_manager import OCRManager
+        self.ocr_manager = OCRManager()
+        
+        # Initialize zoom controller
+        try:
+            from src.zoom_controller import ZoomController
+        except ImportError:
+            from zoom_controller import ZoomController
+        self.zoom_controller = ZoomController(self)
         
         # Initialize fishing bot
         self.fishing_bot = FishingBot(self)
@@ -255,7 +297,10 @@ class HotkeyGUI:
         
         # Initialize UpdateManager after GUI is ready
         try:
-            from updater import UpdateManager
+            try:
+                from src.updater import UpdateManager
+            except ImportError:
+                from updater import UpdateManager
             self.update_manager = UpdateManager(self)
             print("✅ Simple UpdateManager initialized")
         except Exception as e:
@@ -334,7 +379,7 @@ class HotkeyGUI:
         
         # Logo at the top
         try:
-            if os.path.exists("images/icon.webp"):
+            if PIL_AVAILABLE and os.path.exists("images/icon.webp"):
                 logo_image = Image.open("images/icon.webp")
                 # Resize logo to appropriate size for header
                 logo_image = logo_image.resize((64, 64), Image.Resampling.LANCZOS)
@@ -398,29 +443,40 @@ class HotkeyGUI:
         self.fish_counter_label = ttk.Label(status_frame, text='Fish: 0', style='Counter.TLabel')
         self.fish_counter_label.grid(row=0, column=2, padx=10, pady=8)
         
-        # Second row - Just runtime (centered)
+        # Second row - Runtime only
         self.runtime_label = ttk.Label(status_frame, text='⏱️ Runtime: 00:00:00', style='Counter.TLabel')
         self.runtime_label.grid(row=1, column=0, columnspan=3, padx=10, pady=8)
         
         current_row += 1
         
-        # Create modern collapsible sections
+        # Create modern collapsible sections - ordered by user priority
+        
+        # 1. Auto Setup - Most important for quick setup
+        self.create_startup_section(current_row)
+        current_row += 1
+        
+        # 2. Fruit Storage - Core functionality
+        self.create_fruit_storage_section(current_row)
+        current_row += 1
+        
+        # 3. Auto Purchase - Core functionality
         self.create_auto_purchase_section(current_row)
         current_row += 1
         
-        self.create_pd_controller_section(current_row)
+        # 4. Discord Webhook - Popular notifications
+        self.create_webhook_section(current_row)
         current_row += 1
         
-        self.create_timing_section(current_row)
-        current_row += 1
-        
-        self.create_presets_section(current_row)
-        current_row += 1
-        
+        # 5. Hotkeys - Essential controls
         self.create_hotkeys_section(current_row)
         current_row += 1
         
-        self.create_webhook_section(current_row)
+        # 6. PD Controller - Advanced settings
+        self.create_pd_controller_section(current_row)
+        current_row += 1
+        
+        # 7. Presets - Save/load functionality
+        self.create_presets_section(current_row)
         current_row += 1
         
         # Discord join section at bottom
@@ -451,16 +507,52 @@ class HotkeyGUI:
     def capture_mouse_click(self, idx):
         """Start a listener to capture the next mouse click and store its coordinates."""  # inserted
         try:
-            self.status_msg.config(text=f'Click anywhere to set Point {idx}...', foreground='blue')
+            # Handle different point types
+            if isinstance(idx, int):
+                # Original auto-purchase points (1-4)
+                self.status_msg.config(text=f'Click anywhere to set Point {idx}...', foreground='blue')
+            elif idx == 'fruit_point':
+                self.status_msg.config(text='Click anywhere to set Fruit Point...', foreground='blue')
+            elif idx == 'bait_point':
+                self.status_msg.config(text='Click anywhere to set Bait Point...', foreground='blue')
 
             def _on_click(x, y, button, pressed):
                 if pressed:
-                    self.point_coords[idx] = (x, y)
+                    if isinstance(idx, int):
+                        # Original auto-purchase points
+                        self.point_coords[idx] = (x, y)
+                        try:
+                            self.root.after(0, lambda: self.update_point_button(idx))
+                            self.root.after(0, lambda: self.status_msg.config(text=f'Point {idx} set: ({x}, {y})', foreground='green'))
+                        except Exception:
+                            pass
+                    elif idx == 'fruit_point':
+                        # Fruit storage point
+                        if not hasattr(self, 'fruit_coords'):
+                            self.fruit_coords = {}
+                        self.fruit_coords['fruit_point'] = (x, y)
+                        try:
+                            # Capture variables properly in lambda
+                            self.root.after(0, lambda coords=(x, y): self.fruit_point_button.config(text=f'Fruit Point: {coords}'))
+                            self.root.after(0, lambda coords=(x, y): self.status_msg.config(text=f'Fruit Point set: {coords}', foreground='green'))
+                        except Exception:
+                            pass
+                    elif idx == 'bait_point':
+                        # Bait selection point
+                        if not hasattr(self, 'fruit_coords'):
+                            self.fruit_coords = {}
+                        self.fruit_coords['bait_point'] = (x, y)
+                        try:
+                            # Capture variables properly in lambda
+                            self.root.after(0, lambda coords=(x, y): self.bait_point_button.config(text=f'Bait Point: {coords}'))
+                            self.root.after(0, lambda coords=(x, y): self.status_msg.config(text=f'Bait Point set: {coords}', foreground='green'))
+                        except Exception:
+                            pass
+                    
                     try:
-                        self.root.after(0, lambda: self.update_point_button(idx))
-                        self.root.after(0, lambda: self.status_msg.config(text=f'Point {idx} set: ({x}, {y})', foreground='green'))
                         self.root.after(0, lambda: self.auto_save_settings())  # Auto-save when point is set
-                    except Exception:
+                    except Exception as e:
+                        print(f"Error auto-saving after point set: {e}")
                         pass
                     return False  # Stop listener after first click
             
@@ -477,6 +569,52 @@ class HotkeyGUI:
         if coords and idx in self.point_buttons:
             self.point_buttons[idx].config(text=f'Point {idx}: {coords}')
         return None
+
+    def capture_key_press(self, key_type):
+        """Capture key press for fruit storage or rod selection"""
+        try:
+            if key_type == 'fruit':
+                self.status_msg.config(text='Press a key (1-9) for Fruit Storage...', foreground='blue')
+            elif key_type == 'rod':
+                self.status_msg.config(text='Press a key (1-9) for Rod Selection...', foreground='blue')
+
+            def _on_key(key):
+                try:
+                    # Get the character representation
+                    key_char = key.char if hasattr(key, 'char') and key.char else None
+                    
+                    # Only accept keys 1-9
+                    if key_char and key_char in '123456789':
+                        if key_type == 'fruit':
+                            self.fruit_storage_key = key_char
+                            try:
+                                self.root.after(0, lambda: self.fruit_key_button.config(text=f'Key {key_char} ✓'))
+                                self.root.after(0, lambda: self.status_msg.config(text=f'Fruit key set: {key_char}', foreground='green'))
+                            except Exception:
+                                pass
+                        elif key_type == 'rod':
+                            self.rod_key = key_char
+                            try:
+                                self.root.after(0, lambda: self.rod_key_button.config(text=f'Key {key_char} ✓'))
+                                self.root.after(0, lambda: self.status_msg.config(text=f'Rod key set: {key_char}', foreground='green'))
+                            except Exception:
+                                pass
+                        
+                        try:
+                            self.root.after(0, lambda: self.auto_save_settings())
+                        except Exception:
+                            pass
+                        return False  # Stop listener
+                except Exception:
+                    pass
+            
+            listener = pynput_keyboard.Listener(on_press=_on_key)
+            listener.start()
+        except Exception as e:
+            try:
+                self.status_msg.config(text=f'Error capturing key: {e}', foreground='red')
+            except Exception:
+                return None
 
     def _click_at(self, coords):
         """Move cursor to coords and perform a left click."""  # inserted
@@ -646,8 +784,7 @@ Sequence (per user spec):
                 # Update the label
                 if self.recording_hotkey == 'toggle_loop':
                     self.loop_key_label.config(text=key_str.upper())
-                elif self.recording_hotkey == 'toggle_overlay':
-                    self.overlay_key_label.config(text=key_str.upper())
+
                 elif self.recording_hotkey == 'exit':
                     self.exit_key_label.config(text=key_str.upper())
                 elif self.recording_hotkey == 'toggle_tray':
@@ -676,11 +813,59 @@ Sequence (per user spec):
         try:
             keyboard.unhook_all()
             keyboard.add_hotkey(self.hotkeys['toggle_loop'], self.toggle_main_loop)
-            keyboard.add_hotkey(self.hotkeys['toggle_overlay'], self.toggle_overlay)
+            keyboard.add_hotkey(self.hotkeys['toggle_layout'], self.toggle_layout)
             keyboard.add_hotkey(self.hotkeys['exit'], self.exit_app)
             keyboard.add_hotkey(self.hotkeys['toggle_tray'], self.toggle_tray_hotkey)
         except Exception as e:
             print(f'Error registering hotkeys: {e}')
+    
+    def toggle_layout(self):
+        """Toggle dual overlay mode via F2 hotkey"""
+        if not hasattr(self, 'dual_overlay_active'):
+            self.dual_overlay_active = False
+        
+        self.dual_overlay_active = not self.dual_overlay_active
+        
+        if self.dual_overlay_active:
+            # Show both overlays
+            self.show_dual_overlays()
+            print("🔄 Dual overlay mode: ON (showing both bar and drop overlays)")
+        else:
+            # Hide both overlays
+            self.hide_dual_overlays()
+            print("🔄 Dual overlay mode: OFF")
+    
+    def show_dual_overlays(self):
+        """Show both bar and drop overlays simultaneously"""
+        if not hasattr(self, 'overlay_manager_bar'):
+            try:
+                from src.overlay import OverlayManager
+            except ImportError:
+                from overlay import OverlayManager
+            self.overlay_manager_bar = OverlayManager(self, fixed_layout='bar')
+            self.overlay_manager_drop = OverlayManager(self, fixed_layout='drop')
+        
+        # Create both overlays
+        self.overlay_manager_bar.create()
+        self.overlay_manager_drop.create()
+        
+        self.overlay_status.config(text='● Overlay: ON', style='StatusOn.TLabel')
+    
+    def hide_dual_overlays(self):
+        """Hide both overlays"""
+        if hasattr(self, 'overlay_manager_bar') and self.overlay_manager_bar.window:
+            self.overlay_manager_bar.destroy()
+        if hasattr(self, 'overlay_manager_drop') and self.overlay_manager_drop.window:
+            self.overlay_manager_drop.destroy()
+        
+        self.overlay_status.config(text='○ Overlay: OFF', style='StatusOff.TLabel')
+    
+    def update_layout_display(self):
+        """Update GUI to show current layout"""
+        layout_info = self.layout_manager.get_layout_info()
+        layout_name = layout_info['name']
+        
+        # Layout status removed - using overlay on/off only
     
     def toggle_tray_hotkey(self):
         """Toggle between tray and normal window via F4 hotkey"""
@@ -783,10 +968,14 @@ Sequence (per user spec):
         target_color = (85, 170, 255)
         
         with mss.mss() as sct:
-            x = self.overlay_area['x']
-            y = self.overlay_area['y']
-            width = self.overlay_area['width']
-            height = self.overlay_area['height']
+            # Use current layout area for screenshot
+            current_area = self.layout_manager.get_layout_area(self.layout_manager.current_layout)
+            if not current_area:
+                current_area = {'x': 700, 'y': 400, 'width': 200, 'height': 100}  # Default bar area
+            x = current_area['x']
+            y = current_area['y']
+            width = current_area['width']
+            height = current_area['height']
             monitor = {'left': x, 'top': y, 'width': width, 'height': height}
             screenshot = sct.grab(monitor)
             img = np.array(screenshot)
@@ -916,156 +1105,7 @@ Sequence (per user spec):
             self.root.after(1000, self.update_runtime_timer)
 
 
-    def toggle_overlay(self):
-        """Toggle the overlay on/off"""
-        self.overlay_active = not self.overlay_active
-        if self.overlay_active:
-            self.overlay_status.config(text='● Overlay: ACTIVE', style='StatusOn.TLabel')
-            self.create_overlay()
-            print(f'Overlay activated at: {self.overlay_area}')
-        else:
-            self.overlay_status.config(text='● Overlay: OFF', style='StatusOff.TLabel')
-            self.destroy_overlay()
-            print(f'Overlay deactivated. Saved area: {self.overlay_area}')
 
-    def create_overlay(self):
-        """Create a draggable, resizable overlay window"""
-        if self.overlay_window is not None:
-            return
-        
-        # Create overlay window
-        self.overlay_window = tk.Toplevel(self.root)
-        
-        # Remove window decorations (title bar, borders)
-        self.overlay_window.overrideredirect(True)
-        
-        # Set window properties
-        self.overlay_window.attributes('-alpha', 0.5)  # Semi-transparent
-        self.overlay_window.attributes('-topmost', True)  # Always on top
-        
-        # Remove minimum size restrictions
-        self.overlay_window.minsize(1, 1)
-        
-        # Set geometry from saved area
-        x = self.overlay_area['x']
-        y = self.overlay_area['y']
-        width = self.overlay_area['width']
-        height = self.overlay_area['height']
-        geometry = f"{width}x{height}+{x}+{y}"
-        self.overlay_window.geometry(geometry)
-        
-        # Create frame with border (using #55aaff color)
-        frame = tk.Frame(self.overlay_window, bg='#55aaff', highlightthickness=2, highlightbackground='#55aaff')
-        frame.pack(fill=tk.BOTH, expand=True)
-        
-        # Bind mouse events for dragging and resizing
-        self.overlay_window.bind("<ButtonPress-1>", self.start_overlay_action)
-        self.overlay_window.bind("<B1-Motion>", self.overlay_motion)
-        self.overlay_window.bind("<Motion>", self.update_cursor)
-        self.overlay_window.bind("<Configure>", self.on_overlay_configure)
-        
-        # Bind to frame as well
-        frame.bind("<ButtonPress-1>", self.start_overlay_action)
-        frame.bind("<B1-Motion>", self.overlay_motion)
-        frame.bind("<Motion>", self.update_cursor)
-
-    def get_resize_edge(self, x, y):
-        """Determine which edge/corner is near the mouse"""
-        width = self.overlay_window.winfo_width()
-        height = self.overlay_window.winfo_height()
-        edge_size = 10
-        on_left = x < edge_size
-        on_right = x > width - edge_size
-        on_top = y < edge_size
-        on_bottom = y > height - edge_size
-        
-        if on_top and on_left:
-            return "nw"
-        elif on_top and on_right:
-            return "ne"
-        elif on_bottom and on_left:
-            return "sw"
-        elif on_bottom and on_right:
-            return "se"
-        elif on_left:
-            return "w"
-        elif on_right:
-            return "e"
-        elif on_top:
-            return "n"
-        elif on_bottom:
-            return "s"
-        return None
-
-    def update_cursor(self, event):
-        """Update cursor based on position"""  # inserted
-        edge = self.get_resize_edge(event.x, event.y)
-        cursor_map = {'nw': 'size_nw_se', 'ne': 'size_ne_sw', 'sw': 'size_ne_sw', 'se': 'size_nw_se', 'n': 'size_ns', 's': 'size_ns', 'e': 'size_we', 'w': 'size_we', None: 'arrow'}
-        self.overlay_window.config(cursor=cursor_map.get(edge, 'arrow'))
-
-    def start_overlay_action(self, event):
-        """Start dragging or resizing the overlay"""  # inserted
-        self.overlay_drag_data['x'] = event.x
-        self.overlay_drag_data['y'] = event.y
-        self.overlay_drag_data['resize_edge'] = self.get_resize_edge(event.x, event.y)
-        self.overlay_drag_data['start_width'] = self.overlay_window.winfo_width()
-        self.overlay_drag_data['start_height'] = self.overlay_window.winfo_height()
-        self.overlay_drag_data['start_x'] = self.overlay_window.winfo_x()
-        self.overlay_drag_data['start_y'] = self.overlay_window.winfo_y()
-
-    def overlay_motion(self, event):
-        """Handle dragging or resizing the overlay"""
-        edge = self.overlay_drag_data['resize_edge']
-        
-        if edge is None:
-            # Dragging
-            x = self.overlay_window.winfo_x() + event.x - self.overlay_drag_data['x']
-            y = self.overlay_window.winfo_y() + event.y - self.overlay_drag_data['y']
-            self.overlay_window.geometry(f'+{x}+{y}')
-        else:
-            # Resizing
-            dx = event.x - self.overlay_drag_data['x']
-            dy = event.y - self.overlay_drag_data['y']
-            
-            new_width = self.overlay_drag_data['start_width']
-            new_height = self.overlay_drag_data['start_height']
-            new_x = self.overlay_drag_data['start_x']
-            new_y = self.overlay_drag_data['start_y']
-            
-            # Handle horizontal resize
-            if 'e' in edge:
-                new_width = max(1, self.overlay_drag_data['start_width'] + dx)
-            elif 'w' in edge:
-                new_width = max(1, self.overlay_drag_data['start_width'] - dx)
-                new_x = self.overlay_drag_data['start_x'] + dx
-            
-            # Handle vertical resize
-            if 's' in edge:
-                new_height = max(1, self.overlay_drag_data['start_height'] + dy)
-            elif 'n' in edge:
-                new_height = max(1, self.overlay_drag_data['start_height'] - dy)
-                new_y = self.overlay_drag_data['start_y'] + dy
-            
-            self.overlay_window.geometry(f"{new_width}x{new_height}+{new_x}+{new_y}")
-
-    def on_overlay_configure(self, event=None):
-        """Save overlay position and size when it changes"""  # inserted
-        if self.overlay_window is not None:
-            self.overlay_area['x'] = self.overlay_window.winfo_x()
-            self.overlay_area['y'] = self.overlay_window.winfo_y()
-            self.overlay_area['width'] = self.overlay_window.winfo_width()
-            self.overlay_area['height'] = self.overlay_window.winfo_height()
-        return None
-
-    def destroy_overlay(self):
-        """Destroy the overlay window"""
-        if self.overlay_window is not None:
-            self.overlay_area['x'] = self.overlay_window.winfo_x()
-            self.overlay_area['y'] = self.overlay_window.winfo_y()
-            self.overlay_area['width'] = self.overlay_window.winfo_width()
-            self.overlay_area['height'] = self.overlay_window.winfo_height()
-            self.overlay_window.destroy()
-            self.overlay_window = None
 
     def exit_app(self):
         """Exit the application"""
@@ -1082,11 +1122,15 @@ Sequence (per user spec):
             except Exception:
                 pass
 
-        # Destroy overlay window if it exists
-        if self.overlay_window is not None:
+        # Destroy dual overlays if they exist
+        if hasattr(self, 'overlay_manager_bar') and self.overlay_manager_bar.window:
             try:
-                self.overlay_window.destroy()
-                self.overlay_window = None
+                self.overlay_manager_bar.destroy()
+            except Exception:
+                pass
+        if hasattr(self, 'overlay_manager_drop') and self.overlay_manager_drop.window:
+            try:
+                self.overlay_manager_drop.destroy()
             except Exception:
                 pass
 
@@ -1177,6 +1221,69 @@ Sequence (per user spec):
             ToolTip(help_btn, tooltips[i])
             row += 1
 
+    def create_fruit_storage_section(self, start_row):
+        """Create the fruit storage collapsible section"""
+        section = CollapsibleFrame(self.main_frame, "🍎 Fruit Storage Settings", start_row)
+        self.collapsible_sections['fruit_storage'] = section
+        frame = section.get_content_frame()
+        
+        # Configure frame for centering like auto purchase
+        frame.columnconfigure((0, 1, 2, 3), weight=1)
+        
+        row = 0
+        
+        # Fruit storage enabled checkbox
+        ttk.Label(frame, text='Active:').grid(row=row, column=0, sticky='e', pady=5, padx=(0, 10))
+        self.fruit_storage_var = tk.BooleanVar(value=getattr(self, 'fruit_storage_enabled', False))
+        fruit_check = ttk.Checkbutton(frame, variable=self.fruit_storage_var, text='Enabled')
+        fruit_check.grid(row=row, column=1, pady=5, sticky='w')
+        help_btn = ttk.Button(frame, text='?', width=3)
+        help_btn.grid(row=row, column=2, padx=(10, 0), pady=5)
+        ToolTip(help_btn, "Automatically store fruits in inventory slot after fishing")
+        self.fruit_storage_var.trace_add('write', lambda *args: (setattr(self, 'fruit_storage_enabled', self.fruit_storage_var.get()), self.auto_save_settings()))
+        row += 1
+        
+        # Fruit storage key
+        ttk.Label(frame, text='Fruit Key:').grid(row=row, column=0, sticky='e', pady=5, padx=(0, 10))
+        self.fruit_key_var = tk.IntVar(value=int(getattr(self, 'fruit_storage_key', '3')))
+        fruit_key_spinbox = ttk.Spinbox(frame, from_=1, to=9, increment=1, textvariable=self.fruit_key_var, width=10)
+        fruit_key_spinbox.grid(row=row, column=1, pady=5, sticky='w')
+        help_btn = ttk.Button(frame, text='?', width=3)
+        help_btn.grid(row=row, column=2, padx=(10, 0), pady=5)
+        ToolTip(help_btn, "Select which key (1-9) to press for fruit storage")
+        self.fruit_key_var.trace_add('write', lambda *args: (setattr(self, 'fruit_storage_key', str(self.fruit_key_var.get())), self.auto_save_settings()))
+        row += 1
+        
+        # Fruit point
+        ttk.Label(frame, text='Fruit Point:').grid(row=row, column=0, sticky='e', pady=5, padx=(0, 10))
+        self.fruit_point_button = ttk.Button(frame, text='Fruit Point',
+                                            command=lambda: self.capture_mouse_click('fruit_point'))
+        self.fruit_point_button.grid(row=row, column=1, pady=5, sticky='w')
+        help_btn = ttk.Button(frame, text='?', width=3)
+        help_btn.grid(row=row, column=2, padx=(10, 0), pady=5)
+        ToolTip(help_btn, "Click to set where to click for fruit selection")
+        row += 1
+        
+        # Rod key
+        ttk.Label(frame, text='Rod Key:').grid(row=row, column=0, sticky='e', pady=5, padx=(0, 10))
+        self.rod_key_var = tk.IntVar(value=int(getattr(self, 'rod_key', '1')))
+        rod_key_spinbox = ttk.Spinbox(frame, from_=1, to=9, increment=1, textvariable=self.rod_key_var, width=10)
+        rod_key_spinbox.grid(row=row, column=1, pady=5, sticky='w')
+        help_btn = ttk.Button(frame, text='?', width=3)
+        help_btn.grid(row=row, column=2, padx=(10, 0), pady=5)
+        ToolTip(help_btn, "Select which key (1-9) to press for rod selection")
+        self.rod_key_var.trace_add('write', lambda *args: (setattr(self, 'rod_key', str(self.rod_key_var.get())), self.auto_save_settings()))
+        row += 1
+        
+        # Bait point
+        ttk.Label(frame, text='Bait Point:').grid(row=row, column=0, sticky='e', pady=5, padx=(0, 10))
+        self.bait_point_button = ttk.Button(frame, text='Bait Point',
+                                           command=lambda: self.capture_mouse_click('bait_point'))
+        self.bait_point_button.grid(row=row, column=1, pady=5, sticky='w')
+        help_btn = ttk.Button(frame, text='?', width=3)
+        help_btn.grid(row=row, column=2, padx=(10, 0), pady=5)
+        ToolTip(help_btn, "Click to set where to click for bait selection")
+
     def create_pd_controller_section(self, start_row):
         """Create the PD controller collapsible section"""
         section = CollapsibleFrame(self.main_frame, "⚙️ PD Controller", start_row)
@@ -1209,39 +1316,6 @@ Sequence (per user spec):
         help_btn.grid(row=row, column=2, padx=(10, 0), pady=5)
         ToolTip(help_btn, "Smooths movement to prevent overshooting. Higher = smoother but slower")
         self.kd_var.trace_add('write', lambda *args: setattr(self, 'kd', self.kd_var.get()))
-
-    def create_timing_section(self, start_row):
-        """Create the timing settings collapsible section"""
-        section = CollapsibleFrame(self.main_frame, "⏱️ Timing Settings", start_row)
-        # Start collapsed by default
-        section.is_expanded = False
-        section.content_frame.pack_forget()
-        section.toggle_btn.config(text='+')
-        self.collapsible_sections['timing'] = section
-        frame = section.get_content_frame()
-        
-        # Configure frame for centering
-        frame.columnconfigure((0, 1, 2), weight=1)
-        
-        row = 0
-        ttk.Label(frame, text='Scan Timeout (s):').grid(row=row, column=0, sticky='e', pady=5, padx=(0, 10))
-        self.timeout_var = tk.DoubleVar(value=self.scan_timeout)
-        timeout_spinbox = ttk.Spinbox(frame, from_=1.0, to=60.0, increment=1.0, textvariable=self.timeout_var, width=10)
-        timeout_spinbox.grid(row=row, column=1, pady=5)
-        help_btn = ttk.Button(frame, text='?', width=3)
-        help_btn.grid(row=row, column=2, padx=(10, 0), pady=5)
-        ToolTip(help_btn, "How long to wait for fish before recasting line (seconds)")
-        self.timeout_var.trace_add('write', lambda *args: setattr(self, 'scan_timeout', self.timeout_var.get()))
-        row += 1
-        
-        ttk.Label(frame, text='Wait After Loss (s):').grid(row=row, column=0, sticky='e', pady=5, padx=(0, 10))
-        self.wait_var = tk.DoubleVar(value=self.wait_after_loss)
-        wait_spinbox = ttk.Spinbox(frame, from_=0.0, to=10.0, increment=0.1, textvariable=self.wait_var, width=10)
-        wait_spinbox.grid(row=row, column=1, pady=5)
-        help_btn = ttk.Button(frame, text='?', width=3)
-        help_btn.grid(row=row, column=2, padx=(10, 0), pady=5)
-        ToolTip(help_btn, "Pause time after losing a fish before recasting (seconds)")
-        self.wait_var.trace_add('write', lambda *args: setattr(self, 'wait_after_loss', self.wait_var.get()))
 
     def create_presets_section(self, start_row):
         """Create the presets save/load section"""
@@ -1292,15 +1366,17 @@ Sequence (per user spec):
         ToolTip(help_btn, "Start/stop the fishing bot")
         row += 1
         
-        ttk.Label(frame, text='Toggle Overlay:').grid(row=row, column=0, sticky='e', pady=5, padx=(0, 10))
-        self.overlay_key_label = ttk.Label(frame, text=self.hotkeys['toggle_overlay'].upper(), relief=tk.RIDGE, padding=5, width=10)
-        self.overlay_key_label.grid(row=row, column=1, pady=5)
-        self.overlay_rebind_btn = ttk.Button(frame, text='Rebind', command=lambda: self.start_rebind('toggle_overlay'))
-        self.overlay_rebind_btn.grid(row=row, column=2, padx=(10, 0), pady=5)
+        ttk.Label(frame, text='Toggle Layout:').grid(row=row, column=0, sticky='e', pady=5, padx=(0, 10))
+        self.layout_key_label = ttk.Label(frame, text=self.hotkeys['toggle_layout'].upper(), relief=tk.RIDGE, padding=5, width=10)
+        self.layout_key_label.grid(row=row, column=1, pady=5)
+        self.layout_rebind_btn = ttk.Button(frame, text='Rebind', command=lambda: self.start_rebind('toggle_layout'))
+        self.layout_rebind_btn.grid(row=row, column=2, padx=(10, 0), pady=5)
         help_btn = ttk.Button(frame, text='?', width=3)
         help_btn.grid(row=row, column=3, padx=(10, 0), pady=5)
-        ToolTip(help_btn, "Show/hide blue detection area overlay")
+        ToolTip(help_btn, "Switch between Bar Layout (blue) and Drop Layout (green)")
         row += 1
+        
+
         
         ttk.Label(frame, text='Exit:').grid(row=row, column=0, sticky='e', pady=5, padx=(0, 10))
         self.exit_key_label = ttk.Label(frame, text=self.hotkeys['exit'].upper(), relief=tk.RIDGE, padding=5, width=10)
@@ -1363,6 +1439,16 @@ Sequence (per user spec):
         self.webhook_interval_var.trace_add('write', lambda *args: (setattr(self, 'webhook_interval', self.webhook_interval_var.get()), self.auto_save_settings()))
         row += 1
         
+        # Devil Fruit Rod Legendary Alerts
+        self.devil_fruit_alerts_var = tk.BooleanVar(value=getattr(self, 'devil_fruit_alerts_enabled', False))
+        devil_fruit_check = ttk.Checkbutton(frame, text='🍎 Devil Fruit Rod Legendary Alerts', variable=self.devil_fruit_alerts_var)
+        devil_fruit_check.grid(row=row, column=0, columnspan=2, pady=5)
+        help_btn = ttk.Button(frame, text='?', width=3)
+        help_btn.grid(row=row, column=2, padx=(10, 0), pady=5)
+        ToolTip(help_btn, "Enable webhook alerts for legendary devil fruit drops (only if you have Devil Fruit rod)")
+        self.devil_fruit_alerts_var.trace_add('write', lambda *args: (setattr(self, 'devil_fruit_alerts_enabled', self.devil_fruit_alerts_var.get()), self.auto_save_settings()))
+        row += 1
+        
         # Test webhook button
         test_btn = ttk.Button(frame, text='Test Webhook', command=self.test_webhook)
         test_btn.grid(row=row, column=0, columnspan=2, pady=10)
@@ -1370,86 +1456,55 @@ Sequence (per user spec):
         help_btn.grid(row=row, column=2, padx=(10, 0), pady=5)
         ToolTip(help_btn, "Send a test message to verify webhook is working")
 
+
+
+    def create_startup_section(self, start_row):
+        """Create the Auto Setup settings section"""
+        section = CollapsibleFrame(self.main_frame, "🚀 Auto Setup Settings", start_row)
+        # Start collapsed by default
+        section.is_expanded = False
+        section.toggle()
+        self.collapsible_sections['zoom'] = section
+        frame = section.get_content_frame()
+        
+        row = 0
+        
+        # Auto zoom enabled checkbox
+        self.auto_zoom_var = tk.BooleanVar(value=False)
+        zoom_check = ttk.Checkbutton(frame, text="Enable Auto Zoom on Startup", 
+                                    variable=self.auto_zoom_var)
+        zoom_check.grid(row=row, column=0, sticky='w', pady=2)
+        ToolTip(zoom_check, "Automatically zoom out when fishing starts for better visibility")
+        
+        row += 1
+        
+        # Info label
+        info_label = ttk.Label(frame, text="When enabled, automatically zooms out for optimal fishing view", 
+                              foreground="gray")
+        info_label.grid(row=row, column=0, sticky='w', pady=(0, 5))
+        
+        # Set default zoom values (hidden from user)
+        self.zoom_out_var = tk.IntVar(value=5)
+        self.zoom_in_var = tk.IntVar(value=8)
+        
+        row += 1
+        
+
+
     def create_discord_section(self, start_row):
         """Create the Discord join section at the bottom"""
         discord_frame = ttk.Frame(self.main_frame)
         discord_frame.grid(row=start_row, column=0, sticky='ew', pady=(25, 10))
         discord_frame.columnconfigure(0, weight=1)
         
-        # Try to load Discord icon, fallback to text if not available
-        discord_icon = None
-        try:
-            from PIL import Image, ImageTk
-            import os
-            if os.path.exists("images/discord.png"):
-                img = Image.open("images/discord.png")
-                img = img.resize((24, 24), Image.Resampling.LANCZOS)
-                discord_icon = ImageTk.PhotoImage(img)
-        except:
-            pass  # Fallback to text-only button
-        
-        button_bg = '#21262d' if self.dark_theme else '#f6f8fa'
-        button_fg = '#58a6ff' if self.dark_theme else '#0969da'
-        button_hover_bg = '#30363d' if self.dark_theme else '#f3f4f6'
-        
-        if discord_icon:
-            discord_btn = tk.Button(discord_frame, text='  Join our Discord!', 
-                                  image=discord_icon, compound='left',
-                                  command=self.open_discord,
-                                  bg=button_bg, fg=button_fg,
-                                  activebackground=button_hover_bg,
-                                  activeforeground=button_fg,
-                                  relief='flat', borderwidth=1,
-                                  font=('Segoe UI', 9),
-                                  cursor='hand2',
-                                  padx=10, pady=5)
-            discord_btn.image = discord_icon
-        else:
-            discord_btn = tk.Button(discord_frame, text='💬 Join our Discord!', 
-                                  command=self.open_discord,
-                                  bg=button_bg, fg=button_fg,
-                                  activebackground=button_hover_bg,
-                                  activeforeground=button_fg,
-                                  relief='flat', borderwidth=1,
-                                  font=('Segoe UI', 9),
-                                  cursor='hand2',
-                                  padx=10, pady=5)
+        # Create Discord button using ttk for proper theme support
+        discord_btn = ttk.Button(discord_frame, text='💬 Join our Discord!', 
+                               command=self.open_discord)
         
         discord_btn.pack(pady=5, padx=10, fill='x')
         
-        # Add combined hover effects and tooltip
-        tooltip_window = None
-        
-        def on_enter(e):
-            nonlocal tooltip_window
-            discord_btn.config(bg=button_hover_bg)
-            
-            # Show tooltip
-            if tooltip_window is None:
-                x = discord_btn.winfo_rootx() + 20
-                y = discord_btn.winfo_rooty() + 20
-                
-                tooltip_window = tk.Toplevel(discord_btn)
-                tooltip_window.wm_overrideredirect(True)
-                tooltip_window.wm_attributes('-topmost', True)
-                tooltip_window.wm_geometry(f"+{x}+{y}")
-                
-                label = tk.Label(tooltip_window, text="Click to join our Discord community!", 
-                               justify='left', background="#ffffe0", relief='solid', 
-                               borderwidth=1, font=("Arial", 9), padx=5, pady=3)
-                label.pack()
-        
-        def on_leave(e):
-            nonlocal tooltip_window
-            discord_btn.config(bg=button_bg)
-            
-            # Hide tooltip
-            if tooltip_window:
-                tooltip_window.destroy()
-                tooltip_window = None
-        
-        discord_btn.bind("<Enter>", on_enter)
-        discord_btn.bind("<Leave>", on_leave)
+        # Add tooltip using the existing ToolTip class
+        ToolTip(discord_btn, "Click to join our Discord community!")
 
     def open_discord(self):
         """Open Discord invite link in browser"""
@@ -1487,6 +1542,24 @@ Sequence (per user spec):
     def test_webhook(self):
         """Send a test webhook message"""
         self.webhook_manager.test()
+    
+
+    
+
+    
+    def on_zoom_settings_change(self, *args):
+        """Called when zoom settings change in GUI"""
+        if hasattr(self, 'zoom_controller'):
+            self.update_zoom_controller_settings()
+    
+    def update_zoom_controller_settings(self):
+        """Update zoom controller with current GUI settings"""
+        if hasattr(self, 'zoom_controller'):
+            self.zoom_controller.update_settings({
+                'zoom_out_steps': self.zoom_out_var.get(),
+                'zoom_in_steps': self.zoom_in_var.get()
+            })
+            print(f"🔧 Zoom settings updated: Out={self.zoom_out_var.get()}, In={self.zoom_in_var.get()}")
 
     def apply_theme(self):
         """Apply the current theme to the application"""
@@ -1596,6 +1669,11 @@ Sequence (per user spec):
                           background=theme_colors["bg"],
                           foreground=theme_colors["error"],
                           font=('Segoe UI', 10))
+            
+            style.configure('StatusInfo.TLabel',
+                          background=theme_colors["bg"],
+                          foreground=theme_colors["accent"],
+                          font=('Segoe UI', 10, 'bold'))
             
             style.configure('Counter.TLabel',
                           background=theme_colors["bg"],
@@ -1716,6 +1794,11 @@ Sequence (per user spec):
                           foreground=theme_colors["error"],
                           font=('Segoe UI', 10))
             
+            style.configure('StatusInfo.TLabel',
+                          background=theme_colors["bg"],
+                          foreground=theme_colors["accent"],
+                          font=('Segoe UI', 10, 'bold'))
+            
             style.configure('Counter.TLabel',
                           background=theme_colors["bg"],
                           foreground=theme_colors["fg"],
@@ -1741,6 +1824,10 @@ Sequence (per user spec):
             'auto_purchase_amount': getattr(self.amount_var, 'get', lambda: getattr(self, 'auto_purchase_amount', 100))(),
             'loops_per_purchase': getattr(self.loops_var, 'get', lambda: getattr(self, 'loops_per_purchase', 1))(),
             'point_coords': getattr(self, 'point_coords', {}),
+            'fruit_coords': getattr(self, 'fruit_coords', {}),
+            'fruit_storage_enabled': getattr(self, 'fruit_storage_enabled', False),
+            'fruit_storage_key': getattr(self, 'fruit_storage_key', '3'),
+            'rod_key': getattr(self, 'rod_key', '1'),
             'kp': getattr(self, 'kp', 0.1),
             'kd': getattr(self, 'kd', 0.5),
             'scan_timeout': getattr(self, 'scan_timeout', 15.0),
@@ -1751,6 +1838,16 @@ Sequence (per user spec):
             'webhook_interval': getattr(self, 'webhook_interval', 10),
             'dark_theme': getattr(self, 'dark_theme', True),
             'current_theme': getattr(self, 'current_theme', 'default'),
+            'layout_settings': getattr(self.layout_manager, 'layouts', {}),
+
+            'zoom_settings': {
+                'auto_zoom_enabled': getattr(self.auto_zoom_var, 'get', lambda: False)() if hasattr(self, 'auto_zoom_var') else False,
+                'zoom_out_steps': getattr(self.zoom_out_var, 'get', lambda: 5)() if hasattr(self, 'zoom_out_var') else 5,
+                'zoom_in_steps': getattr(self.zoom_in_var, 'get', lambda: 3)() if hasattr(self, 'zoom_in_var') else 3,
+                'step_delay': 0.1,
+                'sequence_delay': 0.5,
+                'zoom_cooldown': 2.0
+            },
             'last_saved': datetime.now().isoformat()
         }
         
@@ -1792,8 +1889,7 @@ Sequence (per user spec):
                 'purchase_click_delay': getattr(self, 'purchase_click_delay', 1.0),
                 'purchase_after_type_delay': getattr(self, 'purchase_after_type_delay', 1.0),
                 
-                # Overlay settings
-                'overlay_area': getattr(self, 'overlay_area', {}),
+
                 
                 # Recovery settings
                 'recovery_enabled': getattr(self, 'recovery_enabled', True),
@@ -1862,6 +1958,29 @@ Sequence (per user spec):
                 if hasattr(self, 'point_buttons') and idx in self.point_buttons:
                     self.update_point_button(idx)
             
+            # Load fruit storage coordinates
+            self.fruit_coords = preset_data.get('fruit_coords', {})
+            
+            # Load fruit storage settings
+            self.fruit_storage_enabled = preset_data.get('fruit_storage_enabled', False)
+            if hasattr(self, 'fruit_storage_var'):
+                self.fruit_storage_var.set(self.fruit_storage_enabled)
+            
+            self.fruit_storage_key = preset_data.get('fruit_storage_key', '3')
+            self.rod_key = preset_data.get('rod_key', '1')
+            
+            # Update fruit storage buttons if they exist
+            if hasattr(self, 'fruit_key_button'):
+                self.fruit_key_button.config(text=f'Key {self.fruit_storage_key} ✓')
+            if hasattr(self, 'rod_key_button'):
+                self.rod_key_button.config(text=f'Key {self.rod_key} ✓')
+            if hasattr(self, 'fruit_point_button') and 'fruit_point' in self.fruit_coords:
+                coords = self.fruit_coords['fruit_point']
+                self.fruit_point_button.config(text=f'Fruit Point: {coords}')
+            if hasattr(self, 'bait_point_button') and 'bait_point' in self.fruit_coords:
+                coords = self.fruit_coords['bait_point']
+                self.bait_point_button.config(text=f'Bait Point: {coords}')
+            
             # PD Controller settings
             self.kp = preset_data.get('kp', 0.1)
             if hasattr(self, 'kp_var'):
@@ -1884,9 +2003,7 @@ Sequence (per user spec):
             self.purchase_click_delay = preset_data.get('purchase_click_delay', 1.0)
             self.purchase_after_type_delay = preset_data.get('purchase_after_type_delay', 1.0)
             
-            # Overlay settings
-            if 'overlay_area' in preset_data and preset_data['overlay_area']:
-                self.overlay_area = preset_data['overlay_area']
+
             
             # Recovery settings
             self.recovery_enabled = preset_data.get('recovery_enabled', True)
@@ -1919,11 +2036,26 @@ Sequence (per user spec):
         """Load basic settings before UI creation"""
         settings_file = "default_settings.json"
         if not os.path.exists(settings_file):
+            # Initialize with default settings
+            self.settings = {
+                'zoom_settings': {
+                    'auto_zoom_enabled': False,
+                    'zoom_out_steps': 5,
+                    'zoom_in_steps': 8,
+                    'step_delay': 0.1,
+                    'sequence_delay': 0.5,
+                    'zoom_cooldown': 2.0
+                },
+                'layout_settings': {}
+            }
             return  # No saved settings, use defaults
             
         try:
             with open(settings_file, 'r') as f:
                 preset_data = json.load(f)
+            
+            # Store full settings for access by other components
+            self.settings = preset_data
             
             # Load basic settings that don't require UI elements
             self.auto_purchase_amount = preset_data.get('auto_purchase_amount', 100)
@@ -1946,11 +2078,32 @@ Sequence (per user spec):
             self.webhook_url = preset_data.get('webhook_url', '')
             self.webhook_enabled = preset_data.get('webhook_enabled', False)
             self.webhook_interval = preset_data.get('webhook_interval', 10)
+            self.devil_fruit_alerts_enabled = preset_data.get('devil_fruit_alerts_enabled', False)
+            self.fruit_storage_enabled = preset_data.get('fruit_storage_enabled', False)
+            self.fruit_storage_key = preset_data.get('fruit_storage_key', '3')
+            self.rod_key = preset_data.get('rod_key', '1')
+            self.bait_point = preset_data.get('bait_point', '2')
+            
+            # Load fruit coordinates
+            self.fruit_coords = preset_data.get('fruit_coords', {})
+            
             self.dark_theme = preset_data.get('dark_theme', True)
             self.current_theme = preset_data.get('current_theme', 'default')
             
         except Exception as e:
             print(f'Error loading basic settings: {e}')
+            # Initialize with default settings on error
+            self.settings = {
+                'zoom_settings': {
+                    'auto_zoom_enabled': False,
+                    'zoom_out_steps': 5,
+                    'zoom_in_steps': 8,
+                    'step_delay': 0.1,
+                    'sequence_delay': 0.5,
+                    'zoom_cooldown': 2.0
+                },
+                'layout_settings': {}
+            }
 
     def load_ui_settings(self):
         """Load UI-specific settings after widgets are created"""
@@ -1976,9 +2129,43 @@ Sequence (per user spec):
             if hasattr(self, 'webhook_interval_var'):
                 self.webhook_interval_var.set(self.webhook_interval)
             
+            # Load OCR settings
+            ocr_settings = preset_data.get('ocr_settings', {})
+            if hasattr(self, 'ocr_enabled_var'):
+                self.ocr_enabled_var.set(ocr_settings.get('enabled', True))
+            if hasattr(self, 'tesseract_path_var'):
+                self.tesseract_path_var.set(ocr_settings.get('tesseract_path', 
+                    'C:\\Program Files\\Tesseract-OCR\\tesseract.exe'))
+            
+            # Load zoom settings
+            zoom_settings = preset_data.get('zoom_settings', {})
+            if hasattr(self, 'auto_zoom_var'):
+                self.auto_zoom_var.set(zoom_settings.get('auto_zoom_enabled', False))
+            if hasattr(self, 'zoom_out_var'):
+                self.zoom_out_var.set(zoom_settings.get('zoom_out_steps', 5))
+            if hasattr(self, 'zoom_in_var'):
+                self.zoom_in_var.set(zoom_settings.get('zoom_in_steps', 3))
+            
+            # Update managers with loaded settings
+            if hasattr(self, 'ocr_manager') and ocr_settings.get('tesseract_path'):
+                self.ocr_manager = OCRManager(ocr_settings['tesseract_path'])
+            
+            if hasattr(self, 'zoom_controller'):
+                self.zoom_controller.update_settings({
+                    'zoom_out_steps': zoom_settings.get('zoom_out_steps', 5),
+                    'zoom_in_steps': zoom_settings.get('zoom_in_steps', 3),
+                    'step_delay': zoom_settings.get('step_delay', 0.1),
+                    'sequence_delay': zoom_settings.get('sequence_delay', 0.5),
+                    'zoom_cooldown': zoom_settings.get('zoom_cooldown', 2.0)
+                })
+                # Also refresh from current GUI values
+                self.update_zoom_controller_settings()
+            
             # Update UI elements
             if hasattr(self, 'point_buttons'):
                 self.update_point_buttons()
+            if hasattr(self, 'fruit_point_button') or hasattr(self, 'bait_point_button'):
+                self.update_fruit_storage_buttons()
             if hasattr(self, 'auto_update_btn'):
                 self.update_auto_update_button()
             
@@ -1990,12 +2177,22 @@ Sequence (per user spec):
         for idx, coords in self.point_coords.items():
             if coords and idx in self.point_buttons:
                 self.point_buttons[idx].config(text=f'Point {idx}: {coords}')
+    
+    def update_fruit_storage_buttons(self):
+        """Update fruit storage button texts with coordinates"""
+        if hasattr(self, 'fruit_coords'):
+            if hasattr(self, 'fruit_point_button') and 'fruit_point' in self.fruit_coords:
+                coords = self.fruit_coords['fruit_point']
+                self.fruit_point_button.config(text=f'Fruit Point: {coords}')
+            if hasattr(self, 'bait_point_button') and 'bait_point' in self.fruit_coords:
+                coords = self.fruit_coords['bait_point']
+                self.bait_point_button.config(text=f'Bait Point: {coords}')
 
     def update_hotkey_labels(self):
         """Update hotkey label texts"""
         try:
             self.loop_key_label.config(text=self.hotkeys['toggle_loop'].upper())
-            self.overlay_key_label.config(text=self.hotkeys['toggle_overlay'].upper())
+
             self.exit_key_label.config(text=self.hotkeys['exit'].upper())
             self.tray_key_label.config(text=self.hotkeys['toggle_tray'].upper())
         except AttributeError:
@@ -2006,15 +2203,16 @@ Sequence (per user spec):
     def setup_system_tray(self):
         """Setup system tray functionality"""
         try:
-            # Create a simple icon
-            image = Image.new('RGB', (64, 64), color='blue')
-            draw = ImageDraw.Draw(image)
-            draw.text((10, 20), "GPO", fill='white')
+            if PIL_AVAILABLE:
+                # Create a simple icon
+                image = Image.new('RGB', (64, 64), color='blue')
+                draw = ImageDraw.Draw(image)
+                draw.text((10, 20), "GPO", fill='white')
             
             menu = pystray.Menu(
                 pystray.MenuItem("Show", self.show_from_tray),
                 pystray.MenuItem("Toggle Loop", self.toggle_main_loop),
-                pystray.MenuItem("Toggle Overlay", self.toggle_overlay),
+
                 pystray.MenuItem("Exit", self.exit_app)
             )
             

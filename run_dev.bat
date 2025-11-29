@@ -17,6 +17,16 @@ echo   F4 - Toggle System Tray
 echo.
 echo Note: If hotkeys don't work, try running as Administrator
 echo.
+
+REM Check if virtual environment exists and activate it
+if exist ".venv\Scripts\activate.bat" (
+    echo Activating virtual environment...
+    call .venv\Scripts\activate.bat
+    echo ✅ Virtual environment activated
+) else (
+    echo ⚠️ Virtual environment not found - using system Python
+)
+
 echo Starting GPO Autofish...
 echo ========================================
 echo.
@@ -25,5 +35,5 @@ python src/main.py
 
 echo.
 echo ========================================
-echo Program ended. Press any key to close...
-pause >nul
+echo Program ended. Terminal will close automatically...
+timeout /t 2 /nobreak >nul

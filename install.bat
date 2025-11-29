@@ -42,6 +42,24 @@ python -m pip install pillow --no-warn-script-location
 python -m pip install requests --no-warn-script-location
 python -m pip install pywin32 --no-warn-script-location
 
+echo Installing lightweight OCR packages...
+echo Trying PaddleOCR (lightweight alternative)...
+python -m pip install paddlepaddle --no-warn-script-location
+python -m pip install paddleocr --no-warn-script-location
+python -m pip install opencv-python --no-warn-script-location
+if errorlevel 1 (
+    echo PaddleOCR failed, trying EasyOCR...
+    python -m pip install easyocr --no-warn-script-location
+    if errorlevel 1 (
+        echo WARNING: All OCR packages failed - using fallback text detection
+        echo The app will still detect drops but without reading text
+    ) else (
+        echo ✓ EasyOCR installed as backup
+    )
+) else (
+    echo ✓ PaddleOCR installed - lightweight text recognition ready!
+)
+
 echo Installing optional UI packages...
 python -m pip install pystray --no-warn-script-location
 if errorlevel 1 (
@@ -54,7 +72,7 @@ if errorlevel 1 (
     echo ERROR: Core package installation failed
     echo.
     echo Trying with --user flag...
-    python -m pip install --user keyboard pynput mss numpy pillow requests pywin32
+    python -m pip install --user keyboard pynput mss numpy pillow requests pywin32 pytesseract opencv-python
     
     python -c "import keyboard, pynput, mss, numpy, PIL, requests, win32api; print('✓ Core packages installed with --user')" 2>nul
     if errorlevel 1 (
@@ -85,6 +103,8 @@ python -c "import win32api; print('✓ pywin32')" 2>nul || echo ✗ pywin32 MISS
 
 echo Checking optional modules...
 python -c "import pystray; print('✓ pystray (system tray support)')" 2>nul || echo ✗ pystray (system tray disabled)
+python -c "import paddleocr; print('✓ PaddleOCR (lightweight text recognition)')" 2>nul || python -c "import easyocr; print('✓ EasyOCR (text recognition)')" 2>nul || echo ✗ OCR (using fallback detection)
+python -c "import cv2; print('✓ opencv-python (image processing)')" 2>nul || echo ✗ opencv-python (image processing disabled)
 
 echo.
 echo Testing basic functionality...
@@ -105,6 +125,7 @@ if errorlevel 1 (
     echo Try running the installer as administrator
 )
 
+
 echo.
 echo ========================================
 echo   Installation Complete!
@@ -121,6 +142,12 @@ echo   ✓ Discord webhook notifications
 echo   ✓ System tray support
 echo   ✓ Auto-recovery system
 echo   ✓ Pause/Resume functionality
+echo   ✓ Dual layout system (F2 to toggle)
+echo   ✓ Text recognition for drops (OCR)
+echo   ✓ Auto zoom control
+echo.
+echo OCR Status:
+python -c "import paddleocr; print('✓ PaddleOCR ready - lightweight text recognition available')" 2>nul || python -c "import easyocr; print('✓ EasyOCR ready - text recognition available')" 2>nul || echo ⚠️  Using fallback detection - drops detected but text not readable
 echo.
 echo Press any key to exit...
 pause >nul

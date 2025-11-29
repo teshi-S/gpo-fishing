@@ -1,0 +1,17 @@
+{
+  "current_layout": "drop",
+  "layout_areas": {
+    "bar": {
+      "x": 1058,
+      "y": 377,
+      "width": 183,
+      "height": 472
+    },
+    "drop": {
+      "x": 705,
+      "y": 76,
+      "width": 497,
+      "height": 122
+    }
+  }
+}

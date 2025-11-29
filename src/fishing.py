@@ -238,7 +238,102 @@ class FishingBot:
     
     def cast_line(self):
         """Cast fishing line"""
+        # Always move to optimal fishing position before casting
+        self.move_to_fishing_position()
+        
+        # Cast the line
         self.app.cast_line()
+    
+    def store_fruit(self):
+        """Complete fruit storage and rod switching workflow"""
+        fruit_storage_enabled = getattr(self.app, 'fruit_storage_enabled', False)
+        print(f"🔍 Fruit storage enabled: {fruit_storage_enabled}")
+        
+        if not fruit_storage_enabled:
+            print("⏭️ Fruit storage disabled - skipping")
+            return
+            
+        try:
+            import keyboard
+            import time
+            
+            # Get configured keys from GUI settings
+            fruit_key = getattr(self.app, 'fruit_storage_key', '3')
+            rod_key = getattr(self.app, 'rod_key', '1')
+            
+            print(f"🍎 Starting fruit storage workflow...")
+            
+            # Step 1: Press the configured fruit storage key
+            print(f"📦 Step 1: Pressing fruit storage key '{fruit_key}'")
+            keyboard.press_and_release(fruit_key)
+            time.sleep(0.3)
+            
+            # Step 2: Click at the configured fruit point
+            if hasattr(self.app, 'fruit_coords') and 'fruit_point' in self.app.fruit_coords:
+                fruit_x, fruit_y = self.app.fruit_coords['fruit_point']
+                print(f"🎯 Step 2: Clicking fruit point at ({fruit_x}, {fruit_y})")
+                self.app._click_at((fruit_x, fruit_y))
+                time.sleep(0.3)
+            else:
+                print("❌ Fruit point coordinates not configured - skipping fruit storage")
+                return
+            
+            # Step 2.5: Press backspace to drop fruit if storage fails
+            print(f"⬇️ Step 2.5: Pressing backspace to drop fruit")
+            keyboard.press_and_release('backspace')
+            time.sleep(0.3)
+            
+            # Step 3: Press the configured rod key
+            print(f"🎣 Step 3: Pressing rod key '{rod_key}'")
+            keyboard.press_and_release(rod_key)
+            time.sleep(0.3)
+            
+            # Step 4: Click at the configured bait point
+            if hasattr(self.app, 'fruit_coords') and 'bait_point' in self.app.fruit_coords:
+                bait_x, bait_y = self.app.fruit_coords['bait_point']
+                print(f"🎯 Step 4: Clicking bait point at ({bait_x}, {bait_y})")
+                self.app._click_at((bait_x, bait_y))
+                time.sleep(0.3)
+            else:
+                print("❌ Bait point coordinates not configured - skipping bait selection")
+                return
+            
+            # Step 5: Move mouse to fishing position (center-top of screen)
+            self.move_to_fishing_position()
+            
+            print(f"✅ Fruit storage sequence completed: Key {fruit_key} → Fruit Point → Key {rod_key} → Bait Point → Fishing Position")
+            
+        except Exception as e:
+            print(f"❌ Fruit storage workflow failed: {e}")
+    
+    def move_to_fishing_position(self):
+        """Move mouse to optimal fishing position (center-top of screen) and right-click"""
+        try:
+            import win32api
+            import win32gui
+            import time
+            
+            # Get screen dimensions
+            screen_width = win32api.GetSystemMetrics(0)  # SM_CXSCREEN
+            screen_height = win32api.GetSystemMetrics(1)  # SM_CYSCREEN
+            
+            # Calculate center-top position (center horizontally, about 1/3 from top)
+            fishing_x = screen_width // 2
+            fishing_y = screen_height // 3
+            
+            print(f"🎯 Moving mouse to fishing position: ({fishing_x}, {fishing_y})")
+            
+            # Move mouse to fishing position
+            self.app._click_at((fishing_x, fishing_y))
+            time.sleep(0.2)
+            
+            # Right-click for good measure
+            print(f"🖱️ Right-clicking at fishing position")
+            self.app._right_click_at((fishing_x, fishing_y))
+            time.sleep(0.3)
+            
+        except Exception as e:
+            print(f"❌ Failed to move to fishing position: {e}")
     
     def check_and_purchase(self):
         """Check if auto-purchase is needed"""
@@ -396,12 +491,9 @@ class FishingBot:
         
         try:
             with mss.mss() as sct:
-                # Auto-purchase at start if enabled
-                if getattr(self.app, 'auto_purchase_var', None) and self.app.auto_purchase_var.get():
-                    self.app.set_recovery_state("purchasing", {"sequence": "auto_purchase"})
-                    self.perform_auto_purchase()
+                # Initial setup sequence
+                self.perform_initial_setup()
                 
-                # Main fishing loop
                 # Main fishing loop
                 while self.app.main_loop_active and not self.force_stop_flag:
                     # Update heartbeat for watchdog
@@ -453,10 +545,15 @@ class FishingBot:
                             
                             # Get screenshot with error handling
                             try:
-                                x = self.app.overlay_area['x']
-                                y = self.app.overlay_area['y']
-                                width = self.app.overlay_area['width']
-                                height = self.app.overlay_area['height']
+                                # Use bar layout area for fishing detection
+                                bar_area = self.app.layout_manager.get_layout_area('bar')
+                                if not bar_area:
+                                    # Default bar area if not set
+                                    bar_area = {'x': 700, 'y': 400, 'width': 200, 'height': 100}
+                                x = bar_area['x']
+                                y = bar_area['y']
+                                width = bar_area['width']
+                                height = bar_area['height']
                                 monitor = {'left': x, 'top': y, 'width': width, 'height': height}
                                 screenshot = sct.grab(monitor)
                                 img = np.array(screenshot)
@@ -503,6 +600,10 @@ class FishingBot:
                                     
                                     # Increment fish counter when fish is actually caught
                                     self.app.increment_fish_counter()
+                                    
+                                    # Complete post-catch workflow
+                                    self.process_post_catch_workflow()
+                                    
                                     time.sleep(self.app.wait_after_loss)
                                     was_detecting = False
                                     self.check_and_purchase()
@@ -687,3 +788,228 @@ class FishingBot:
                     self.app.is_clicking = False
                 except:
                     pass
+    
+    def perform_initial_setup(self):
+        """Perform initial setup: zoom out, specific zoom in, auto buy if enabled"""
+        print("🔧 Performing initial setup...")
+        
+        # Step 1: Full zoom out
+        if hasattr(self.app, 'zoom_controller'):
+            if self.app.zoom_controller.is_available():
+                print("🔍 Step 1: Full zoom out...")
+                success_out = self.app.zoom_controller.reset_zoom()
+                print(f"   Zoom out result: {success_out}")
+                time.sleep(0.5)
+                
+                # Step 2: Specific zoom in
+                print("🔍 Step 2: Specific zoom in...")
+                success_in = self.app.zoom_controller.zoom_in()
+                print(f"   Zoom in result: {success_in}")
+                time.sleep(0.5)
+            else:
+                print("🔍 Zoom controller not available (missing pywin32)")
+        else:
+            print("🔍 Zoom controller not initialized")
+        
+        # Step 3: Auto purchase if enabled
+        if getattr(self.app, 'auto_purchase_var', None) and self.app.auto_purchase_var.get():
+            print("🛒 Step 3: Auto purchase...")
+            self.app.set_recovery_state("purchasing", {"sequence": "initial_auto_purchase"})
+            self.perform_auto_purchase()
+        
+        print("✅ Initial setup complete")
+    
+    def process_post_catch_workflow(self):
+        """Complete post-catch workflow: search for drops, find text, log to webhook and dev mode"""
+        print("🎣 Processing post-catch workflow...")
+        
+        # Step 1: Switch to drop layout for text recognition
+        original_layout = self.app.layout_manager.current_layout
+        if original_layout != 'drop':
+            print("📍 Switching to drop layout for text recognition...")
+            self.app.layout_manager.toggle_layout()
+            if hasattr(self.app, 'overlay_manager'):
+                self.app.overlay_manager.update_layout()
+        
+        # Step 2: Search for drops and extract text
+        drop_info = self.search_for_drops()
+        
+        # Step 3: Store fruit if enabled AND we actually caught a fruit
+        if drop_info and drop_info.get('has_fruit', False):
+            print("🍎 Fruit detected in catch - running fruit storage sequence")
+            self.store_fruit()
+        elif getattr(self.app, 'fruit_storage_enabled', False):
+            print("⏭️ No fruit detected - skipping fruit storage sequence")
+        else:
+            print("⏭️ Fruit storage disabled - skipping sequence")
+        
+        # Step 4: Switch back to bar layout if needed
+        if original_layout != 'drop':
+            print("📍 Switching back to bar layout...")
+            self.app.layout_manager.toggle_layout()
+            if hasattr(self.app, 'overlay_manager'):
+                self.app.overlay_manager.update_layout()
+        
+        print("✅ Post-catch workflow complete")
+    
+    def check_legendary_pity(self, drop_text):
+        """
+        Check if devil fruit drop is legendary by detecting pity counters
+        Legendary drops show: 0/37, 0/40, 0/92, 0/100
+        Non-legendary show: 1/37, 2/40, etc.
+        """
+        import re
+        
+        # Look for pity counter patterns
+        pity_patterns = [
+            r'0/37',   # Legendary pity counter
+            r'0/40',   # Legendary pity counter  
+            r'0/92',   # Legendary pity counter
+            r'0/100'   # Legendary pity counter
+        ]
+        
+        text_lower = drop_text.lower()
+        
+        # Check for legendary indicators
+        legendary_keywords = ['legendary', 'pity']
+        has_legendary_keyword = any(keyword in text_lower for keyword in legendary_keywords)
+        
+        # Check for pity counter patterns
+        has_legendary_pity = any(re.search(pattern, drop_text) for pattern in pity_patterns)
+        
+        # Must have either legendary keyword OR legendary pity counter (0/X)
+        is_legendary = has_legendary_keyword or has_legendary_pity
+        
+        if is_legendary:
+            print(f"🔍 Legendary detection: keyword={has_legendary_keyword}, pity={has_legendary_pity}")
+            print(f"📝 Drop text: {drop_text}")
+        
+        return is_legendary
+
+    def search_for_drops(self):
+        """Search for drops in the drop layout area and extract text"""
+        drop_info = {'has_fruit': False, 'drop_text': '', 'is_legendary': False}
+        
+        try:
+            # Only process if OCR is available
+            if not hasattr(self.app, 'ocr_manager') or not self.app.ocr_manager.get_stats()['available']:
+                print("📝 OCR not available, skipping drop search")
+                return drop_info
+            
+            # Get drop layout area
+            drop_area = self.app.layout_manager.get_layout_area('drop')
+            if not drop_area:
+                print("📝 No drop area configured, skipping drop search")
+                return drop_info
+            
+            print("🔍 Searching for drops in drop area...")
+            
+            # Capture screenshot of drop area
+            import mss
+            with mss.mss() as sct:
+                monitor = {
+                    'left': drop_area['x'],
+                    'top': drop_area['y'],
+                    'width': drop_area['width'],
+                    'height': drop_area['height']
+                }
+                screenshot = sct.grab(monitor)
+                img = np.array(screenshot)
+            
+            # Extract text using OCR
+            if hasattr(self.app, 'ocr_manager'):
+                drop_text = self.app.ocr_manager.extract_text(img)
+                if drop_text:
+                    drop_info['drop_text'] = drop_text
+                    
+                    if drop_text == "TEXT_DETECTED_NO_OCR":
+                        print("📝 Text-like content detected in drop area (install Tesseract OCR for full text recognition)")
+                        # Assume it might be a fruit since we can't read it
+                        drop_info['has_fruit'] = True
+                    else:
+                        print(f"📝 Drop detected: {drop_text}")
+                        
+                        # Check if it's a devil fruit (One Piece game specific)
+                        devil_fruit_keywords = ['devil', 'fruit', 'backpack', 'drop', 'got', 'fished up']
+                        drop_text_lower = drop_text.lower()
+                        
+                        # Look for devil fruit related phrases
+                        devil_fruit_phrases = [
+                            'devil fruit',
+                            'fished up a devil',
+                            'got a devil fruit',
+                            'devil fruit drop',
+                            'check your backpack'
+                        ]
+                        
+                        # Check for specific phrases first
+                        for phrase in devil_fruit_phrases:
+                            if phrase in drop_text_lower:
+                                drop_info['has_fruit'] = True
+                                print(f"🍎 Devil fruit detected in drop: '{phrase}'")
+                                break
+                        
+                        # If no phrase match, check for individual keywords (need at least 2)
+                        if not drop_info['has_fruit']:
+                            keyword_matches = sum(1 for keyword in devil_fruit_keywords if keyword in drop_text_lower)
+                            if keyword_matches >= 2:
+                                drop_info['has_fruit'] = True
+                                print(f"🍎 Devil fruit detected (keyword match count: {keyword_matches})")
+                        
+                        # Check for LEGENDARY devil fruit drops only
+                        if 'devil fruit' in drop_text_lower:
+                            drop_info['has_fruit'] = True  # Devil fruits are fruits too
+                            # Check if it's legendary by looking for pity counters
+                            is_legendary = self.check_legendary_pity(drop_text)
+                            drop_info['is_legendary'] = is_legendary
+                            
+                            if is_legendary:
+                                print(f"🍎 LEGENDARY DEVIL FRUIT DETECTED!")
+                                # Only send webhook if devil fruit alerts are enabled
+                                if (hasattr(self.app, 'webhook_manager') and 
+                                    getattr(self.app, 'devil_fruit_alerts_enabled', False)):
+                                    self.app.webhook_manager.send_devil_fruit_drop()
+                                    print(f"🔔 Legendary devil fruit webhook sent!")
+                                else:
+                                    print(f"🔕 Devil fruit alerts disabled - no webhook sent")
+                            else:
+                                print(f"🍎 Devil fruit detected (not legendary) - no webhook sent")
+                        
+                        # Display in drop overlay
+                        if hasattr(self.app, 'overlay_manager_drop') and self.app.overlay_manager_drop.window:
+                            self.app.overlay_manager_drop.display_captured_text(drop_text)
+                        
+                        # Log to dev mode (console)
+                        if getattr(self.app, 'dev_mode', False):
+                            print(f"🔧 [DEV MODE] Drop details: {drop_text}")
+                        
+                else:
+                    print("📝 No text found in drop area")
+                        
+        except Exception as e:
+            print(f"❌ Drop search error: {e}")
+        
+        return drop_info
+    
+    def process_auto_zoom(self):
+        """Process automatic zoom control (legacy method for compatibility)"""
+        try:
+            # Only process if auto zoom is enabled
+            if not hasattr(self.app, 'auto_zoom_var') or not self.app.auto_zoom_var.get():
+                return
+            
+            # Check if zoom controller is available
+            if not hasattr(self.app, 'zoom_controller') or not self.app.zoom_controller.is_available():
+                return
+            
+            # Perform zoom sequence (zoom out then in)
+            if self.app.zoom_controller.can_zoom():
+                print("🔍 Performing auto zoom sequence...")
+                success = self.app.zoom_controller.zoom_to_optimal()
+                if success:
+                    print("✅ Auto zoom completed")
+                else:
+                    print("❌ Auto zoom failed")
+                    
+        except Exception as e:
+            print(f"❌ Auto zoom error: {e}")

@@ -3,6 +3,7 @@ from datetime import datetime
 class WebhookManager:
     def __init__(self, app):
         self.app = app
+        self.devil_fruit_count = 0  # Track devil fruits caught
     
     def send_fishing_progress(self):
         if not self.app.webhook_url or not self.app.webhook_enabled:
@@ -33,6 +34,40 @@ class WebhookManager:
                 
         except Exception as e:
             print(f"❌ Webhook error: {e}")
+    
+    def send_devil_fruit_drop(self):
+        """Send webhook notification for devil fruit drops"""
+        if not self.app.webhook_url or not self.app.webhook_enabled:
+            return
+            
+        # Increment devil fruit counter
+        self.devil_fruit_count += 1
+            
+        try:
+            import requests
+            
+            embed = {
+                "title": "🏆 LEGENDARY DEVIL FRUIT! 🏆",
+                "description": "**🎉 LEGENDARY FRUIT CAUGHT 🎉**",
+                "color": 0xFFD700,  # Gold color for legendary
+                "fields": [
+                    {"name": "🏆 Legendary Devil Fruits", "value": str(self.devil_fruit_count), "inline": True},
+                    {"name": "🐟 Total Fish Caught", "value": str(self.app.fish_count), "inline": True},
+                ],
+                "footer": {"text": "GPO Autofish - Legendary Fruit Caught!"},
+                "timestamp": datetime.utcnow().isoformat()
+            }
+            
+            payload = {"embeds": [embed], "username": "GPO Autofish Bot"}
+            response = requests.post(self.app.webhook_url, json=payload, timeout=10)
+            
+            if response.status_code == 204:
+                print(f"🍎 DEVIL FRUIT WEBHOOK SENT! Total: {self.devil_fruit_count}")
+            else:
+                print(f"❌ Devil fruit webhook failed: {response.status_code}")
+                
+        except Exception as e:
+            print(f"❌ Devil fruit webhook error: {e}")
     
     def send_purchase(self, amount):
         if not self.app.webhook_url or not self.app.webhook_enabled:
