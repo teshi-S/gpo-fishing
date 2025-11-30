@@ -241,7 +241,18 @@ class FishingBot:
         # Always move to optimal fishing position before casting
         self.move_to_fishing_position()
         
+        # Right-click to clear any menus before casting
+        try:
+            import win32api
+            print(f"🖱️ Right-clicking at fishing position")
+            current_pos = win32api.GetCursorPos()
+            self.app._right_click_at(current_pos)
+            time.sleep(0.3)
+        except Exception as e:
+            print(f"❌ Right-click failed: {e}")
+        
         # Cast the line
+        print("Casting line...")
         self.app.cast_line()
     
     def store_fruit(self):
@@ -339,14 +350,9 @@ class FishingBot:
                 fishing_y = screen_height // 3
                 print(f"🎯 Moving mouse to default fishing position: ({fishing_x}, {fishing_y})")
             
-            # Move mouse to fishing position
-            self.app._click_at((fishing_x, fishing_y))
-            time.sleep(0.2)
-            
-            # Right-click for good measure
-            print(f"🖱️ Right-clicking at fishing position")
-            self.app._right_click_at((fishing_x, fishing_y))
-            time.sleep(0.3)
+            # Only move mouse to position, don't click yet
+            win32api.SetCursorPos((fishing_x, fishing_y))
+            time.sleep(0.1)
             
         except Exception as e:
             print(f"❌ Failed to move to fishing position: {e}")
@@ -614,10 +620,6 @@ class FishingBot:
         self.fishing_success_rate = 0.8  # Track success rate for adaptive timeouts
         self.recent_catches = []  # Track recent fishing attempts
         
-        # Start watchdog for stuck state detection
-        if not self.watchdog_active:
-            self.start_watchdog()
-        
         # Reset recovery count on fresh start
         if not self.recovery_in_progress:
             self.app.recovery_count = 0
@@ -629,6 +631,10 @@ class FishingBot:
                     self.perform_initial_setup()
                 else:
                     print("🔧 Skipping initial setup - resuming from current state")
+                
+                # Start watchdog AFTER initial setup to prevent interference
+                if not self.watchdog_active:
+                    self.start_watchdog()
                 
                 # Main fishing loop
                 while self.app.main_loop_active and not self.force_stop_flag:
@@ -960,6 +966,9 @@ class FishingBot:
         """Perform initial setup: zoom out, specific zoom in, auto buy if enabled"""
         print("🔧 Performing initial setup...")
         
+        # Set state to prevent watchdog interference
+        self.app.set_recovery_state("initial_setup", {"action": "starting_setup"})
+        
         # Update heartbeat to prevent watchdog from triggering during setup
         self.update_heartbeat()
         
@@ -969,18 +978,20 @@ class FishingBot:
         if auto_zoom_enabled:
             if hasattr(self.app, 'zoom_controller'):
                 if self.app.zoom_controller.is_available():
+                    self.app.set_recovery_state("initial_setup", {"action": "zoom_out"})
                     print("🔍 Step 1: Full zoom out...")
                     success_out = self.app.zoom_controller.reset_zoom()
                     print(f"Zoom out result: {success_out}")
                     self.update_heartbeat()  # Update after zoom out
-                    time.sleep(0.5)
+                    time.sleep(1.0)  # Longer delay to ensure zoom completes
                     
                     # Step 2: Specific zoom in
+                    self.app.set_recovery_state("initial_setup", {"action": "zoom_in"})
                     print("🔍 Step 2: Specific zoom in...")
                     success_in = self.app.zoom_controller.zoom_in()
                     print(f"Zoom in result: {success_in}")
                     self.update_heartbeat()  # Update after zoom in
-                    time.sleep(0.5)
+                    time.sleep(1.0)  # Longer delay to ensure zoom completes
                 else:
                     print("🔍 Zoom controller not available (missing pywin32)")
             else:
@@ -993,7 +1004,16 @@ class FishingBot:
             print("🛒 Step 3: Auto purchase...")
             self.app.set_recovery_state("purchasing", {"sequence": "initial_auto_purchase"})
             self.perform_auto_purchase()
+            # Add delay after auto purchase to ensure it completes
+            time.sleep(1.0)
         
+        # Final delay to ensure all setup operations are complete before casting
+        self.app.set_recovery_state("initial_setup", {"action": "finalizing"})
+        print("⏳ Waiting for setup to stabilize...")
+        time.sleep(1.5)
+        
+        # Reset to idle state after setup is complete
+        self.app.set_recovery_state("idle", {"action": "setup_complete"})
         self.update_heartbeat()  # Final heartbeat update
         print("✅ Initial setup complete")
     

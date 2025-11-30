@@ -205,7 +205,8 @@ class HotkeyGUI:
             "menu_opening": 10.0,   # Opening shop menu with 'E'
             "typing": 8.0,          # Typing purchase amount
             "clicking": 5.0,        # Individual clicks
-            "idle": 45.0           # Between actions
+            "idle": 45.0,          # Between actions
+            "initial_setup": 120.0  # Initial setup with zoom and auto-purchase
         }
         
         # Dev mode logging
