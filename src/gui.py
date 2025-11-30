@@ -522,6 +522,27 @@ class HotkeyGUI:
         
         fishing_frame.columnconfigure(1, weight=1)
 
+    def update_fishing_location_colors(self):
+        """Update fishing location section colors when theme changes"""
+        try:
+            theme_colors = self.theme_manager.themes[self.current_theme]["colors"]
+            
+            # Find the fishing frame by searching through main_frame children
+            for child in self.main_frame.winfo_children():
+                if isinstance(child, tk.LabelFrame) and "Fishing Location" in child.cget("text"):
+                    # Update frame colors
+                    child.configure(bg=theme_colors["bg"], fg=theme_colors["accent"])
+                    
+                    # Update all child widgets
+                    for widget in child.winfo_children():
+                        if isinstance(widget, tk.Label):
+                            widget.configure(bg=theme_colors["bg"], fg=theme_colors["fg"])
+                        elif isinstance(widget, tk.Button):
+                            widget.configure(bg=theme_colors["button_bg"], fg=theme_colors["fg"])
+                    break
+        except Exception as e:
+            print(f"Error updating fishing location colors: {e}")
+
     def update_status(self, message, status_type='info', icon='ℹ️'):
         """Update the status message with color coding"""
         try:
@@ -2143,6 +2164,9 @@ Sequence (per user spec):
             # Update canvas background for dark mode
             if hasattr(self, 'canvas'):
                 self.canvas.configure(bg=theme_colors["bg"])
+            
+            # Update fishing location section colors
+            self.update_fishing_location_colors()
         else:
             # Modern light theme with clean styling
             self.root.configure(bg=theme_colors["bg"])
@@ -2272,6 +2296,9 @@ Sequence (per user spec):
             # Update canvas background for light mode
             if hasattr(self, 'canvas'):
                 self.canvas.configure(bg=theme_colors["bg"])
+            
+            # Update fishing location section colors
+            self.update_fishing_location_colors()
         
 
 
