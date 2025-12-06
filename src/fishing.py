@@ -298,21 +298,16 @@ class FishingBot:
             keyboard.press_and_release('backspace')
             time.sleep(1.0)  # Increased wait for drop animation to complete
             
-            # Step 3: Ensure proper rod equipping with multiple attempts
-            print(f"🎣 Step 3: Ensuring rod is properly equipped...")
+            # Step 3: Ensure proper rod equipping (single press only)
+            print(f"🎣 Step 3: Returning to rod...")
             
             # Wait longer for game to settle completely
-            time.sleep(0.8)
+            time.sleep(1.0)  # Extended wait to ensure game state is stable
             
-            # First rod key press
-            print(f"🎣 Step 3a: First rod key press '{rod_key}'")
+            # Single rod key press - pressing twice cycles through items!
+            print(f"🎣 Step 3: Pressing rod key '{rod_key}' once")
             keyboard.press_and_release(rod_key)
-            time.sleep(0.5)  # Wait for first rod selection
-            
-            # Second rod key press to ensure rod is equipped (safety measure)
-            print(f"🎣 Step 3b: Second rod key press '{rod_key}' (ensuring equipped)")
-            keyboard.press_and_release(rod_key)
-            time.sleep(0.5)  # Wait for rod to be fully equipped
+            time.sleep(0.8)  # Extended wait for rod to be fully equipped
             
             # Step 4: Click at the configured bait point
             if hasattr(self.app, 'fruit_coords') and 'bait_point' in self.app.fruit_coords:
