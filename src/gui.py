@@ -760,34 +760,40 @@ class HotkeyGUI:
 
 
     def _click_at(self, coords):
-        """Move cursor to coords and perform a left click."""  # inserted
+        """Move cursor to coords and perform a left click (Windows 10/11 compatible)."""
         try:
             x, y = (int(coords[0]), int(coords[1]))
-            win32api.SetCursorPos((x, y))
-            try:
-                win32api.mouse_event(win32con.MOUSEEVENTF_MOVE, 0, 1, 0, 0)
-                threading.Event().wait(0.05)
-                win32api.mouse_event(win32con.MOUSEEVENTF_LEFTDOWN, 0, 0, 0, 0)
-                threading.Event().wait(0.05)
-                win32api.mouse_event(win32con.MOUSEEVENTF_LEFTUP, 0, 0, 0, 0)
-            except Exception:
-                pass
+            # Convert to normalized absolute coordinates (0-65535)
+            screen_width = win32api.GetSystemMetrics(0)
+            screen_height = win32api.GetSystemMetrics(1)
+            nx = int(x * 65535 / screen_width)
+            ny = int(y * 65535 / screen_height)
+            
+            # Move and click using absolute coordinates
+            win32api.mouse_event(win32con.MOUSEEVENTF_ABSOLUTE | win32con.MOUSEEVENTF_MOVE, nx, ny, 0, 0)
+            threading.Event().wait(0.05)
+            win32api.mouse_event(win32con.MOUSEEVENTF_LEFTDOWN, 0, 0, 0, 0)
+            threading.Event().wait(0.05)
+            win32api.mouse_event(win32con.MOUSEEVENTF_LEFTUP, 0, 0, 0, 0)
         except Exception as e:
             print(f'Error clicking at {coords}: {e}')
 
     def _right_click_at(self, coords):
-        """Move cursor to coords and perform a right click."""  # inserted
+        """Move cursor to coords and perform a right click (Windows 10/11 compatible)."""
         try:
             x, y = (int(coords[0]), int(coords[1]))
-            win32api.SetCursorPos((x, y))
-            try:
-                win32api.mouse_event(win32con.MOUSEEVENTF_MOVE, 0, 1, 0, 0)
-                threading.Event().wait(0.05)
-                win32api.mouse_event(win32con.MOUSEEVENTF_RIGHTDOWN, 0, 0, 0, 0)
-                threading.Event().wait(0.05)
-                win32api.mouse_event(win32con.MOUSEEVENTF_RIGHTUP, 0, 0, 0, 0)
-            except Exception:
-                pass
+            # Convert to normalized absolute coordinates (0-65535)
+            screen_width = win32api.GetSystemMetrics(0)
+            screen_height = win32api.GetSystemMetrics(1)
+            nx = int(x * 65535 / screen_width)
+            ny = int(y * 65535 / screen_height)
+            
+            # Move and click using absolute coordinates
+            win32api.mouse_event(win32con.MOUSEEVENTF_ABSOLUTE | win32con.MOUSEEVENTF_MOVE, nx, ny, 0, 0)
+            threading.Event().wait(0.05)
+            win32api.mouse_event(win32con.MOUSEEVENTF_RIGHTDOWN, 0, 0, 0, 0)
+            threading.Event().wait(0.05)
+            win32api.mouse_event(win32con.MOUSEEVENTF_RIGHTUP, 0, 0, 0, 0)
         except Exception as e:
             print(f'Error right-clicking at {coords}: {e}')
 
@@ -1105,6 +1111,11 @@ Sequence (per user spec):
         
         self.main_loop_active = True
         self.is_paused = False
+        
+        # Reset fruit spawn cooldown when resuming (be paranoid again)
+        if hasattr(self, 'fishing_bot'):
+            self.fishing_bot.last_fruit_spawn_time = 0
+            print("🔄 Fruit spawn detection reset - checking for spawns immediately")
         
         # Update UI
         self.loop_status.config(text='● Main Loop: ACTIVE', style='StatusOn.TLabel')

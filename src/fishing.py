@@ -14,6 +14,8 @@ class FishingBot:
         self.watchdog_thread = None
         self.last_loop_heartbeat = time.time()
         self.force_stop_flag = False
+        self.last_fruit_spawn_time = 0  # Track when last fruit spawn was detected
+        self.fruit_spawn_cooldown = 15 * 60  # 15 minutes cooldown after detecting spawn
     
     def check_recovery_needed(self):
         """Smart recovery check - detects genuinely stuck states"""
@@ -672,25 +674,42 @@ class FishingBot:
                             # Update heartbeat frequently during detection
                             self.update_heartbeat()
                             
-                            # Periodically check for fruit spawns (silent unless detected)
+                            # Periodically check for fruit spawns (with smart cooldown)
                             current_time = time.time()
-                            if current_time - last_spawn_check > spawn_check_interval:
+                            time_since_last_spawn = current_time - self.last_fruit_spawn_time
+                            
+                            # Only check if: enough time passed AND we're outside the 15min cooldown after detection
+                            if current_time - last_spawn_check > spawn_check_interval and time_since_last_spawn > self.fruit_spawn_cooldown:
                                 try:
-                                    # Check for spawn text using OCR (respects OCR cooldown internally)
+                                    # Check for spawn text using OCR
                                     if hasattr(self.app, 'ocr_manager') and self.app.ocr_manager.is_available():
+                                        # Temporarily disable OCR cooldown for spawn checks
+                                        original_cooldown = self.app.ocr_manager.capture_cooldown
+                                        self.app.ocr_manager.capture_cooldown = 0.1  # Very short cooldown for spawn detection
+                                        
                                         spawn_text = self.app.ocr_manager.extract_text()
+                                        
+                                        # Restore original cooldown
+                                        self.app.ocr_manager.capture_cooldown = original_cooldown
+                                        
                                         if spawn_text:
+                                            print(f"🔍 Spawn check OCR result: {spawn_text}")
                                             fruit_name = self.app.ocr_manager.detect_fruit_spawn(spawn_text)
                                             if fruit_name:
-                                                # Only log when something is detected
                                                 print(f"🌟 Devil fruit spawn detected: {fruit_name}")
+                                                # Record detection time for cooldown
+                                                self.last_fruit_spawn_time = current_time
+                                                print(f"⏰ Fruit spawn cooldown activated - won't check again for 15 minutes")
+                                                # Send webhook
                                                 if hasattr(self.app, 'webhook_manager') and getattr(self.app, 'fruit_spawn_webhook_enabled', True):
                                                     self.app.webhook_manager.send_fruit_spawn(fruit_name)
                                     
                                     last_spawn_check = current_time
                                 except Exception as spawn_error:
-                                    # Silent error handling - don't spam console
-                                    pass
+                                    print(f"⚠️ Spawn check error: {spawn_error}")
+                            elif time_since_last_spawn <= self.fruit_spawn_cooldown:
+                                # Still in cooldown period, skip checking
+                                pass
                             
                             # Smart adaptive timeout system
                             current_time = time.time()

@@ -502,32 +502,46 @@ class OCRManager:
         
         text_lower = text.lower()
         
-        # Look for spawn keywords first
-        spawn_keywords = ['spawned', 'has spawned', 'spawn']
+        # Look for spawn keywords (including common OCR typos)
+        spawn_keywords = ['spawned', 'spavned', 'has spawned', 'spawn']
         has_spawn_keyword = any(keyword in text_lower for keyword in spawn_keywords)
         
         if not has_spawn_keyword:
-            return None
+            # Also check if "spawn" appears anywhere as part of a word
+            if 'spawn' not in text_lower and 'spavn' not in text_lower:
+                return None
         
         # Try to find fruit name using fuzzy matching
+        best_match = None
+        best_similarity = 0
+        best_fruit = None
+        
         for i, fruit_lower in enumerate(self.devil_fruits_lower):
-            # Direct match
+            # Direct match (exact)
             if fruit_lower in text_lower:
+                print(f"✅ Direct fruit match: {self.devil_fruits[i]}")
                 return self.devil_fruits[i]
             
-            # Fuzzy match - allow for OCR errors (1-2 character differences)
+            # Fuzzy match - find BEST match, not first match
             if len(fruit_lower) >= 3:
-                # Check if most characters match in sequence
                 for word in text_lower.split():
                     if len(word) >= 3:
                         # Calculate similarity
                         matches = sum(1 for a, b in zip(fruit_lower, word) if a == b)
                         similarity = matches / max(len(fruit_lower), len(word))
                         
-                        # Accept if 70%+ similarity
-                        if similarity >= 0.7:
-                            return self.devil_fruits[i]
+                        # Track best match
+                        if similarity > best_similarity:
+                            best_similarity = similarity
+                            best_match = word
+                            best_fruit = self.devil_fruits[i]
         
+        # Return best match if similarity is good enough
+        if best_similarity >= 0.7:
+            print(f"✅ Fuzzy fruit match: '{best_match}' → {best_fruit} ({best_similarity*100:.0f}% similar)")
+            return best_fruit
+        
+        print(f"❌ No fruit name found in text: {text_lower}")
         return None
     
     def get_stats(self) -> dict:
